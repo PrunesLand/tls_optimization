@@ -24,6 +24,6 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     Will display statistics of the downloaded map and traffic network
 
     ```bash
-    docker run --rm -w /app/src/sumo-setup tls_optimization python statistics.py
+    docker run --rm -w /app/src/sumo_setup tls_optimization python statistics.py
     ```
 
