@@ -1,4 +1,9 @@
-def main():
-    print(f"Hello World")
+from config import *
+from genetic_algorithm.initialization import generate_population
+
+
+def genetic_algorithm():
+    population = generate_population(POPULATION)
+    print(population)
 if __name__ == "__main__":
-    main()
+    genetic_algorithm()
