@@ -88,7 +88,7 @@ def get_min_max_stats():
     try:
         output_dir = Path("src/sumo_setup")
         output_dir.mkdir(parents=True, exist_ok=True)
-        json_filepath = output_dir / "TLS_statistics.json"
+        json_filepath = output_dir / "tls_statistics.json"
         with open(json_filepath, 'w') as f:
             json.dump(tls_json_data, f, indent=4)
         print(f"\n Individual traffic light data saved to: {json_filepath}")
