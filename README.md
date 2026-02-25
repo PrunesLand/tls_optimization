@@ -26,6 +26,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -w /app/src/sumo_setup tls_optimization python statistics.py
     ```
+    
 4. **Generate network data**
 
     This will generate network data that will have phase durations assigned for individual TLS.
