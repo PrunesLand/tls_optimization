@@ -20,29 +20,38 @@ def get_min_max_stats():
     }
 
     for tls_id in tls_ids:
-        links = traci.trafficlight.getControlledLinks(tls_id)
-        stats['signals'].append(len(links))
-        stats['lanes'].append(sum(len(group) for group in links))
-
         logics = traci.trafficlight.getAllProgramLogics(tls_id)
         if not logics: continue
         
         phases = [p for p in logics[0].phases if p.duration >= IGNORE_THRESHOLD]
-        stats['phases'].append(len(phases))
-        stats['cycles'].append(sum(p.duration for p in phases))
         
+        temp_green, temp_yellow, temp_red = [], [], []
         mod_count = 0
+        
         for p in phases:
             state = p.state.lower()
             if 'y' in state or 'u' in state:
-                stats['yellow'].append(p.duration)
+                temp_yellow.append(p.duration)
             elif 'g' in state:
-                stats['green'].append(p.duration)
+                temp_green.append(p.duration)
                 mod_count += 1
             else:
-                stats['red'].append(p.duration)
+                temp_red.append(p.duration)
                 mod_count += 1
+        
+        if mod_count == 0: # Skip TLS if no modifiable phases found
+            continue
+
+        links = traci.trafficlight.getControlledLinks(tls_id)
+        stats['signals'].append(len(links))
+        stats['lanes'].append(sum(len(group) for group in links))
+        stats['phases'].append(len(phases))
+        stats['cycles'].append(sum(p.duration for p in phases))
         stats['modifiable'].append(mod_count)
+        
+        stats['green'].extend(temp_green)
+        stats['yellow'].extend(temp_yellow)
+        stats['red'].extend(temp_red)
 
     traci.close()
 
