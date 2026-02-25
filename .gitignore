@@ -24,4 +24,4 @@ pip-delete-this-directory.txt
 # Dataset (if downloaded locally)
 *.json
 kaggle_cache/
-*.net.xml.gz
+*.xml.gz
