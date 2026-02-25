@@ -24,7 +24,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     Will display statistics of the downloaded map and traffic network
 
     ```bash
-    docker run --rm -w /app/src/sumo_setup tls_optimization python statistics.py
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.statistics
     ```
     
 4. **Generate network data**
@@ -33,4 +33,11 @@ This is my take on optimizing traffic light controls as a discrete type problem 
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.generation
+    ```
+5. **Generate map**
+
+    This will generate a new map following `osm.netccfg` configurations.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization netconvert -c osm.netccfg
     ```
