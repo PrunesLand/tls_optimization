@@ -29,7 +29,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     
 4. **Generate network data**
 
-    This will generate network data that will have phase durations assigned for individual TLS.
+    This will generate network data that will have phase durations assigned for individual TLS. This is required step to run the optimization algorithm.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.generation
