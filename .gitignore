@@ -1,3 +1,26 @@
-__pycache__
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
 
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Mac
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Dataset (if downloaded locally)
 *.json
+kaggle_cache/
