@@ -5,7 +5,7 @@ from .extraction import extract_traffic_light_data
 
 def generate_data():
 
-    output_data = extract_traffic_light_data()
+    output_data = extract_traffic_light_data(detail=False)
 
     output_dir = Path("src/sumo_setup")
     output_dir.mkdir(parents=True, exist_ok=True)
