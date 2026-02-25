@@ -13,7 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libatomic1 \
     libfontconfig1 \
+    sumo \
+    sumo-tools \
     && rm -rf /var/lib/apt/lists/*
+
+# Set the SUMO_HOME environment variable to point to the installed SUMO directory.
+ENV SUMO_HOME=/usr/share/sumo
 
 # Copy and install Python dependencies separately to cache the pip install step.
 COPY requirements.txt /app/
