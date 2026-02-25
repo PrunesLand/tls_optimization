@@ -4,9 +4,6 @@ import json
 from pathlib import Path
 from config import SUMO_ARGS
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-IGNORE_THRESHOLD = 1
-
 def get_min_max_stats():
     try:
         traci.start(SUMO_ARGS)
@@ -27,24 +24,37 @@ def get_min_max_stats():
         logics = traci.trafficlight.getAllProgramLogics(tls_id)
         if not logics: continue
         
-        phases = [p for p in logics[0].phases if p.duration >= IGNORE_THRESHOLD]
+        phases = [p for p in logics[0].phases if p.duration >= 1] # Filter out phases with zero duration
+        if not phases: continue # Safeguard against empty phase lists
         
         temp_green, temp_yellow, temp_red = [], [], []
         mod_count = 0
         
+        # Counts how many phases in the cycle have actual stop/go logic
         for p in phases:
             state = p.state.lower()
-            if 'y' in state or 'u' in state:
-                temp_yellow.append(p.duration)
-            elif 'g' in state:
-                temp_green.append(p.duration)
-                mod_count += 1
-            else:
-                temp_red.append(p.duration)
+            if 'g' in state or 'r' in state:
                 mod_count += 1
         
         if mod_count == 0: # Skip TLS if no modifiable phases found
             continue
+
+        num_links = len(phases[0].state)
+        for i in range(num_links):
+            link_green, link_yellow, link_red = 0, 0, 0
+            
+            for p in phases:
+                char = p.state[i].lower() 
+                if char == 'g':
+                    link_green += p.duration
+                elif char in ['y', 'u']:
+                    link_yellow += p.duration
+                elif char == 'r':
+                    link_red += p.duration
+            
+            if link_green > 0: temp_green.append(link_green)
+            if link_yellow > 0: temp_yellow.append(link_yellow)
+            if link_red > 0: temp_red.append(link_red)
 
         links = traci.trafficlight.getControlledLinks(tls_id)
         
