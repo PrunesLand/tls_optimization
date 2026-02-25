@@ -3,6 +3,8 @@
 <!-- generated on 2026-02-10 08:49:56 by Eclipse SUMO netconvert Version 1.18.0
 -->
 
+<!-- Clustering and TLS Joining are disabled to preserve the original network structure as much as possible, which is crucial for accurate traffic light optimization. The configuration focuses on maintaining the integrity of the original OSM data while ensuring that the resulting SUMO network is suitable for optimization tasks. -->
+
 <configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
 
     <input>
@@ -24,9 +26,9 @@
 
     <tls_building>
         <tls.discard-simple value="true"/>
-        <tls.join value="true"/>
+        <tls.join value="false"/>
         <tls.guess-signals value="true"/>
-        <tls.default-type value="actuated"/>
+        <tls.default-type value="static"/>
     </tls_building>
 
     <ramp_guessing>
@@ -34,7 +36,7 @@
     </ramp_guessing>
 
     <junctions>
-        <junctions.join value="true"/>
+        <junctions.join value="false"/>
         <junctions.corner-detail value="5"/>
     </junctions>
 
