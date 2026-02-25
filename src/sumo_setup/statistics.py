@@ -1,15 +1,17 @@
 import libsumo as traci
 import os
+import json
+from pathlib import Path
+from config import SUMO_ARGS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "osm.sumocfg")
 IGNORE_THRESHOLD = 1
 
 def get_min_max_stats():
     try:
-        traci.start(["sumo", "-c", CONFIG_FILE, "--no-step-log", "true", "--no-warnings", "true"])
+        traci.start(SUMO_ARGS)
     except Exception as e:
-        return print(f"Error: {e}")
+        return print(f"Error starting SUMO: {e}")
 
     tls_ids = traci.trafficlight.getIDList()
     if not tls_ids: return print("No traffic lights found.")
@@ -18,6 +20,8 @@ def get_min_max_stats():
         'lanes': [], 'signals': [], 'phases': [], 'cycles': [],
         'green': [], 'yellow': [], 'red': [], 'modifiable': []
     }
+    
+    tls_json_data = {}
 
     for tls_id in tls_ids:
         logics = traci.trafficlight.getAllProgramLogics(tls_id)
@@ -43,17 +47,43 @@ def get_min_max_stats():
             continue
 
         links = traci.trafficlight.getControlledLinks(tls_id)
-        stats['signals'].append(len(links))
-        stats['lanes'].append(sum(len(group) for group in links))
-        stats['phases'].append(len(phases))
-        stats['cycles'].append(sum(p.duration for p in phases))
-        stats['modifiable'].append(mod_count)
         
+        num_signals = len(links)
+        num_lanes = sum(len(group) for group in links)
+        num_phases = len(phases)
+        cycle_time = sum(p.duration for p in phases)
+
+        stats['signals'].append(num_signals)
+        stats['lanes'].append(num_lanes)
+        stats['phases'].append(num_phases)
+        stats['cycles'].append(cycle_time)
+        stats['modifiable'].append(mod_count)
         stats['green'].extend(temp_green)
         stats['yellow'].extend(temp_yellow)
         stats['red'].extend(temp_red)
+        
+        tls_json_data[tls_id] = {
+            "Lanes Controlled": num_lanes,
+            "Signal Heads": num_signals,
+            "Phases per Cycle": num_phases,
+            "Modifiable Phases": mod_count,
+            "Cycle Time (s)": cycle_time,
+            "Green Durations (s)": temp_green,
+            "Yellow Durations (s)": temp_yellow,
+            "Red Durations (s)": temp_red
+        }
 
     traci.close()
+
+    try:
+        output_dir = Path("src/sumo_setup")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        json_filepath = output_dir / "TLS_statistics.json"
+        with open(json_filepath, 'w') as f:
+            json.dump(tls_json_data, f, indent=4)
+        print(f"\n Individual traffic light data saved to: {json_filepath}")
+    except Exception as e:
+        print(f"\n[ERROR] Could not save JSON file: {e}")
 
     def report(label, data, unit=""):
         if not data: return print(f"{label:20}: None")
