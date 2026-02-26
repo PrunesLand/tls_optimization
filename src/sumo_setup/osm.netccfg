@@ -27,7 +27,7 @@
     <tls_building>
         <tls.discard-simple value="true"/>
         <tls.join value="false"/>
-        <tls.guess-signals value="true"/>
+        <tls.guess-signals value="false"/>
         <tls.default-type value="static"/>
     </tls_building>
 
