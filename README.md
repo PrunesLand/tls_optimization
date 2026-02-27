@@ -20,7 +20,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     This will run the project with Docker.
 
     ```bash
-    docker run --rm tls_optimization
+    docker run --rm -v $(pwd):/app -w /app tls_optimization
     ```
 
 3. **View map statistics**
