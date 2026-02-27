@@ -2,7 +2,9 @@ from config import *
 from src.genetic_algorithm.initialization import generate_population
 
 def genetic_algorithm():
-    population = generate_population(INPUT_JSON_PATH, OUTPUT_JSON_PATH)
-    print(population)
+    population = generate_population(BASELINE_TRAFFIC_DATA, OUTPUT_JSON_PATH)
+
+
+
 if __name__ == "__main__":
     genetic_algorithm()

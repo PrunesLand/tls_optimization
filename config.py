@@ -15,5 +15,5 @@ SUMO_ARGS = [
     "--no-warnings", "true",
     "--time-to-teleport", "-1",  
 ]
-INPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/sumo_setup/traffic_cycle_results.json")
-OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/sumo_setup/optimized_traffic_cycles.json")
+BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/sumo_setup/baseline_traffic_data.json")
+OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/sumo_setup/check_traffic_cycles.json")
