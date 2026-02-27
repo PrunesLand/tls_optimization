@@ -35,7 +35,6 @@ def extract_traffic_light_data(detail: bool = False):
             phase_map[phase_key] = {
                 "duration": int(p.duration),
                 "state": p.state,
-                "fitness": 0
             }
 
         if detail:
@@ -50,7 +49,10 @@ def extract_traffic_light_data(detail: bool = False):
                 }
             }
         else:
-            tls_json_data[tls_id] = phase_map
+            tls_json_data[tls_id] = {
+                "phases": phase_map,
+                "fitness": 0,
+            }
 
     traci.close()
     return tls_json_data

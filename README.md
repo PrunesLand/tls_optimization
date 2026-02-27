@@ -2,6 +2,10 @@
 
 This is my take on optimizing traffic light controls as a discrete type problem with genetic algorithms.
 
+## Optimization process
+
+
+
 ## How to run
 
 1. **Building with Docker**
@@ -41,3 +45,12 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization netconvert -c osm.netccfg
     ```
+
+## Docker cleaning commands
+
+Docker has build-in commands that are ment to be used for house keeping tasks:
+- `docker image prune`: delete all dangling images (as in without an assigned tag)
+- `docker image prune -a`: delete all images not used by any container
+- `docker system prune`: delete stopped containers, unused networks and dangling image + dangling build cache
+- `docker system prune -a`: delete stopped containers, unused networks, images not used by any container + all build cache
+
