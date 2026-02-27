@@ -1,14 +1,18 @@
 import json
 from pathlib import Path
-
 from src.sumo_setup.extraction import extract_traffic_light_data
 
-
 def get_min_max_stats():
-    
-    tls_json_data = extract_traffic_light_data(detail=True)
-    if not tls_json_data:
+    extracted = extract_traffic_light_data(detail=True)
+
+    if not extracted:
         print("No data extracted. Ensure SUMO is configured correctly.")
+        return
+
+    tls_json_data = extracted.get("tls_data", {})
+
+    if not tls_json_data:
+        print("No traffic light data found.")
         return
 
     stats = {
@@ -40,7 +44,7 @@ def get_min_max_stats():
         output_dir.mkdir(parents=True, exist_ok=True)
         json_filepath = output_dir / "tls_statistics.json"
         with open(json_filepath, 'w') as f:
-            json.dump(tls_json_data, f, indent=4)
+            json.dump(extracted, f, indent=4)
         print(f"\nIndividual traffic light data saved to: {json_filepath}")
     except Exception as e:
         print(f"\n[ERROR] Could not save JSON file: {e}")
@@ -64,7 +68,6 @@ def get_min_max_stats():
     report("Yellow Duration", stats['yellow'], "s")
     report("Red Duration", stats['red'], "s")
     print("=" * 50)
-
 
 if __name__ == "__main__":
     get_min_max_stats()
