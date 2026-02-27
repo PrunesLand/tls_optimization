@@ -34,7 +34,8 @@ def extract_traffic_light_data(detail: bool = False):
             phase_key = f"phase_{idx + 1}"
             phase_map[phase_key] = {
                 "duration": int(p.duration),
-                "state": p.state
+                "state": p.state,
+                "fitness": 0
             }
 
         if detail:
