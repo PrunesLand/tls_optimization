@@ -7,9 +7,8 @@ def fitness_function(individual):
 
     return
 
-def evaluate_population(population):
+def evaluate_individual(individual):
 
-    for individual in population:
-        fitness = fitness_function(individual)
-        individual['fitness'] = fitness
+    fitness = fitness_function(individual)
+    individual['fitness'] = fitness
     return

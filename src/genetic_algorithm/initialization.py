@@ -2,7 +2,7 @@ import json
 import random
 import copy
 
-def generate_individual(num_phases, cycle_length=90):
+def _initialize_solution(num_phases, cycle_length=90):
     if num_phases <= 1:
         return [cycle_length]
         
@@ -19,22 +19,23 @@ def generate_individual(num_phases, cycle_length=90):
     
     return durations
 
-def generate_population(input_json_path, output_json_path):
+def generate_individual(input_json_path, output_json_path):
     with open(input_json_path, 'r') as file:
-        tls_data = json.load(file)
+        data = json.load(file)
         
-    new_tls_data = copy.deepcopy(tls_data)
+    individual = copy.deepcopy(data)
     
-    for _, phases_dict in new_tls_data.items():
+    for _, phases_dict in individual['tls_data'].items():
         
         num_phases = len(phases_dict)
         
-        new_durations = generate_individual(num_phases, cycle_length=90)
+        new_durations = _initialize_solution(num_phases)
         
-        for index, phase_key in enumerate(sorted(phases_dict.keys())):
+        sorted_keys = sorted(phases_dict.keys(), key=lambda x: int(x.split('_')[1]))
+        for index, phase_key in enumerate(sorted_keys):
             phases_dict[phase_key]['duration'] = new_durations[index]
             
     with open(output_json_path, 'w') as file: #temporarily write a new json for sanity check
-        json.dump(new_tls_data, file, indent=4)
+        json.dump(individual, file, indent=4)
         
-    return new_tls_data
+    return individual
