@@ -7,7 +7,7 @@ from config import SUMO_ARGS
 def fitness_function(data):
     traci.start(SUMO_ARGS)
 
-    traffic_lights = data.get("traffic_lights", {})
+    traffic_lights = data.get("tls_data", {})
 
     for tl_id, phases in traffic_lights.items():
         phase_list = []
