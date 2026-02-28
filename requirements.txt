@@ -1,2 +1,4 @@
 libsumo
 numpy
+torch
+evox
