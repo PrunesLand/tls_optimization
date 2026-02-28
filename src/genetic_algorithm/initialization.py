@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import random
 import copy
 
@@ -39,3 +40,19 @@ def generate_individual(input_json_path, output_json_path):
         json.dump(individual, file, indent=4)
         
     return individual
+
+def generate_population(input_json_path, output_json_path, population_size=10):
+    population = []
+    
+    for _ in range(population_size):
+        individual = generate_individual(input_json_path, output_json_path)
+        population.append(individual)
+    
+    output_dir = Path("src/outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_filepath = output_dir / "population_tls_data.json"
+    
+    with open(json_filepath, "w") as f:
+        json.dump(population, f, indent=4)
+        
+    return population

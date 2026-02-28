@@ -56,11 +56,19 @@ def evaluate_individual(individual):
     evaluated_individual = copy.deepcopy(individual)
     evaluated_individual["fitness"] = fitness
 
+    return evaluated_individual
+
+def evaluate_population(population):
+    evaluated_population = []
+    for individual in population:
+        evaluated_individual = evaluate_individual(individual)
+        evaluated_population.append(evaluated_individual)
+
     output_dir = Path("src/outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_filepath = output_dir / "individual_tls_data_with_fitness.json"
+    json_filepath = output_dir / "population_tls_data_with_fitness.json"
     
     with open(json_filepath, "w") as f:
-        json.dump(evaluated_individual, f, indent=4)
-
-    return evaluated_individual
+        json.dump(evaluated_population, f, indent=4)
+    
+    return evaluated_population
