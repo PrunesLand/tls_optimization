@@ -36,9 +36,6 @@ def fitness_function(data):
 
         vehicle_ids = traci.vehicle.getIDList()
 
-        if step % 100 == 0:
-            print(f"[DEBUG] Step {step}: {len(vehicle_ids)} vehicles on road")
-
         for vid in vehicle_ids:
             speed = traci.vehicle.getSpeed(vid)
             max_speed = traci.vehicle.getMaxSpeed(vid)
@@ -59,9 +56,9 @@ def evaluate_individual(individual):
     evaluated_individual = copy.deepcopy(individual)
     evaluated_individual["fitness"] = fitness
 
-    output_dir = Path("src/sumo_setup")
+    output_dir = Path("src/outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_filepath = output_dir / "tls_data_with_fitness.json"
+    json_filepath = output_dir / "individual_tls_data_with_fitness.json"
     
     with open(json_filepath, "w") as f:
         json.dump(evaluated_individual, f, indent=4)

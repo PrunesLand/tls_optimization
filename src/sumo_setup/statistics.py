@@ -40,7 +40,7 @@ def get_min_max_stats():
                 stats['red'].append(duration)
 
     try:
-        output_dir = Path("src/sumo_setup")
+        output_dir = Path("src/outputs")
         output_dir.mkdir(parents=True, exist_ok=True)
         json_filepath = output_dir / "tls_statistics.json"
         with open(json_filepath, 'w') as f:
