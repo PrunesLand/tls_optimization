@@ -2,3 +2,4 @@ libsumo
 numpy
 torch
 evox
+jax[cpu]
