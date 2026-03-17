@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+import json
+import time
 from evox.core.problem import Problem
 from evox import algorithms, workflows, monitors
 import numpy as np
@@ -157,6 +159,7 @@ def run_evox_ga(pop_size=None, generations=None, num_workers=None):
 
     # 1. GPU check
     check_gpu()
+    start_time = time.time()
 
     # 2. Extract traffic light data from SUMO
     print("Extracting traffic light data...")
@@ -217,6 +220,67 @@ def run_evox_ga(pop_size=None, generations=None, num_workers=None):
         print(f"Gen {gen + 1}/{final_generations} | Best Fitness: {best_fitness:.4f}")
 
     print("Optimization finished.")
+
+    # -----------------------------------------------------------------------
+    # Extract and print the best solution as a JSON configuration
+    # -----------------------------------------------------------------------
+    monitor_state = state.get_child_state("monitors0")
+
+    # Get best fitness and best solution vector
+    best_fitness, _ = monitor.get_best_fitness(monitor_state)
+    best_solution, _ = monitor.get_best_solution(monitor_state)
+
+    best_fitness = float(best_fitness)
+    best_solution_np = np.array(best_solution)
+
+    # Reconstruct the full TLS configuration from the solution vector.
+    # Each dimension maps back to a (tls_id, phase_key) pair via
+    # problem.modifiable_phases, which was built in the same order.
+    result_config = {}
+    for j, (tid, pkey) in enumerate(problem.modifiable_phases):
+        duration = int(max(1, round(float(best_solution_np[j]))))
+        if tid not in result_config:
+            # Carry over all phases from base data so non-green phases are included
+            result_config[tid] = copy.deepcopy(problem.base_tls_data[tid])
+        result_config[tid][pkey]["duration"] = duration
+
+    elapsed_seconds = round(time.time() - start_time, 2)
+
+    output = {
+        "best_fitness": best_fitness,
+        "elapsed_seconds": elapsed_seconds,
+        "optimizer": "DE (Differential Evolution)",
+        "pop_size": final_pop_size,
+        "generations": final_generations,
+        "total_green_phases_optimized": problem.total_dims,
+        "tls_configuration": {
+            tid: {
+                pkey: {
+                    "duration": result_config[tid][pkey]["duration"],
+                    "state": result_config[tid][pkey]["state"],
+                }
+                for pkey in sorted(
+                    result_config[tid].keys(),
+                    key=lambda x: int(x.split("_")[1])
+                )
+            }
+            for tid in sorted(result_config.keys())
+        }
+    }
+
+    print("\n" + "=" * 60)
+    print("OPTIMIZATION RESULT")
+    print("=" * 60)
+    print(f"Total time: {elapsed_seconds}s ({elapsed_seconds/60:.2f} min)")
+    print(json.dumps(output, indent=2))
+    print("=" * 60 + "\n")
+
+    # Also save to file so it persists after the container exits
+    output_path = os.path.join(os.path.dirname(__file__), "best_tls_config.json")
+    with open(output_path, "w") as f:
+        json.dump(output, f, indent=2)
+    print(f"Result saved to: {output_path}")
+
     return best_fitness
 
 
