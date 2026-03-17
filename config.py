@@ -6,6 +6,13 @@ GENERATIONS = 100
 MUTATION_RATE = 0.01
 CROSSOVER_RATE = 0.7
 
+# EVOX specific configuration
+EVOX_POP_SIZE = 300
+EVOX_GENERATIONS = 100
+EVOX_MUTATION_RATE = 0.01
+EVOX_LB = 5.0  # Min green duration
+EVOX_UB = 60.0 # Max green duration
+
 #configuration file for sumo
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "src/sumo_setup/osm.sumocfg")
 SUMO_ARGS = [

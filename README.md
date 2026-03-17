@@ -17,13 +17,21 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```
 2. **Running with Docker**
 
-    This will run the project with Docker.
+    This will run the project with the standard genetic algorithm using Docker.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization
     ```
 
-3. **View map statistics**
+3. **Running Evox GA with Docker**
+
+    This will run the Evox genetic algorithm (JAX/GPU optimized) using Docker.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python3 src/evox/evox_genetic_algorithm.py
+    ```
+
+4. **View map statistics**
 
     Will display statistics of the downloaded map and traffic network
 

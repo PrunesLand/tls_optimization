@@ -1,5 +1,5 @@
 libsumo
 numpy
 torch
-evox
+evox==0.9.0
 jax[cpu]
