@@ -187,6 +187,10 @@ def run_evox_ga(pop_size=None, generations=None, num_workers=None):
         algorithm=algorithm,
         problem=problem,
         monitors=[monitor],
+        # REQUIRED: tells the workflow not to JIT the problem since
+        # fitness_function calls libsumo which is external/non-JAX.
+        external_problem=True,
+        num_objectives=1,
     )
 
     # 6. Init
@@ -194,15 +198,26 @@ def run_evox_ga(pop_size=None, generations=None, num_workers=None):
     state = workflow.init(key)
 
     # 7. Optimization loop
+    # EvalMonitor state is nested inside the workflow state.
+    # We extract it by key, pass it into monitor methods, then read results.
+    # The key is "monitors[0]" for the first monitor in the list.
     print(f"Starting EvoX DE: {final_pop_size} population, "
           f"{final_generations} generations, {final_workers} parallel workers.")
+    best_fitness = float("inf")
     for gen in range(final_generations):
         state = workflow.step(state)
-        best_fitness, state = monitor.get_best_fitness(state)
-        print(f"Gen {gen + 1}/{final_generations} | Best Fitness: {float(best_fitness):.4f}")
+
+        # EvoX v0.9: monitor state is nested inside workflow state.
+        # Try known key formats; print available keys if both fail so it
+        # is immediately debuggable without reading source code.
+        monitor_state = state.get_child_state("monitors0")
+
+        best_fitness, _monitor_state = monitor.get_best_fitness(monitor_state)
+        best_fitness = float(best_fitness)
+        print(f"Gen {gen + 1}/{final_generations} | Best Fitness: {best_fitness:.4f}")
 
     print("Optimization finished.")
-    return float(best_fitness)
+    return best_fitness
 
 
 if __name__ == "__main__":
