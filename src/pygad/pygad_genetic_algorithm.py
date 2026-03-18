@@ -15,6 +15,7 @@ from config import (
     PYGAD_MUTATION_PERCENT_GENES,
     PYGAD_NUM_PARENTS_MATING,
     PYGAD_KEEP_PARENTS,
+    NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
     SUMO_ARGS
 )
@@ -118,7 +119,8 @@ def run_genetic_algorithm():
         mutation_percent_genes=PYGAD_MUTATION_PERCENT_GENES,
         keep_parents=PYGAD_KEEP_PARENTS,
         on_generation=custom_callback,
-        save_best_solutions=True
+        save_best_solutions=True,
+        parallel_processing=["process", NUM_PROCESSORS]
     )
 
     # 4. Run the GA
