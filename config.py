@@ -6,6 +6,13 @@ GENERATIONS = 100
 MUTATION_RATE = 0.01
 CROSSOVER_RATE = 0.7
 
+# pygad configuration parameters
+PYGAD_POPULATION_SIZE = 5
+PYGAD_NUM_GENERATIONS = 2
+PYGAD_MUTATION_PERCENT_GENES = 10
+PYGAD_NUM_PARENTS_MATING = 5
+PYGAD_KEEP_PARENTS = 2
+
 #configuration file for sumo
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "src/sumo_setup/osm.sumocfg")
 SUMO_ARGS = [
