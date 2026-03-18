@@ -46,7 +46,6 @@ def pygad_fitness_func(ga_instance, solution, solution_idx):
     return -delay
 
 def custom_callback(ga_instance):
-    """Placeholder for custom logic to be executed during the GA process."""
     print(f"Executing custom method at generation {ga_instance.generations_completed}...")
 
 def run_genetic_algorithm():
@@ -55,7 +54,6 @@ def run_genetic_algorithm():
         baseline_data = json.load(f)
     
     # 2. Determine gene space (min/max durations)
-    # Let's say durations are between 5 and 90 seconds
     gene_space = {'low': 5, 'high': 90}
     
     # 3. Calculate number of genes
