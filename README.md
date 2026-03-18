@@ -23,6 +23,14 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization
     ```
 
+2.5. **Run GA with PyGad**
+
+    This will run the PyGad Implementation of the Genetic Algorithm.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.pygad_genetic_algorithm
+    ```
+
 3. **View map statistics**
 
     Will display statistics of the downloaded map and traffic network
