@@ -21,7 +21,6 @@ from config import (
 from src.genetic_algorithm.fitness_evaluation import fitness_function
 
 def vector_to_json(vector, baseline_data):
-    """Converts a flat vector of durations back into the nested JSON structure."""
     new_data = json.loads(json.dumps(baseline_data)) # Deep copy
     gene_idx = 0
     
@@ -40,18 +39,15 @@ def pygad_fitness_func(ga_instance, solution, solution_idx):
     with open(BASELINE_TRAFFIC_DATA, 'r') as f:
         baseline_data = json.load(f)
     
-    # Convert vector to JSON structure
     individual_data = vector_to_json(solution, baseline_data)
     
-    # Calculate fitness using the existing fitness_function
-    # Note: fitness_function in fitness_evaluation.py returns total_delay + (total_vehicles * 10)
-    # PyGAD maximizes fitness, so we want to minimize delay. 
-    # We can use 1 / (delay + 1) or -delay.
     delay = fitness_function(individual_data)
     
-    # Since we want to minimize delay, we return 1/delay (or similar)
-    # or just -delay if pygad supports negative fitness.
     return -delay
+
+def custom_callback(ga_instance):
+    """Placeholder for custom logic to be executed during the GA process."""
+    print(f"Executing custom method at generation {ga_instance.generations_completed}...")
 
 def run_genetic_algorithm():
     # 1. Load baseline data to determine chromosome length
@@ -80,6 +76,7 @@ def run_genetic_algorithm():
         gene_space=gene_space,
         mutation_percent_genes=PYGAD_MUTATION_PERCENT_GENES,
         keep_parents=PYGAD_KEEP_PARENTS,
+        on_generation=custom_callback,
         save_best_solutions=True
     )
 
