@@ -21,93 +21,98 @@ from config import (
 )
 from src.genetic_algorithm.fitness_evaluation import fitness_function
 
-# Load baseline data once
 with open(BASELINE_TRAFFIC_DATA, 'r') as f:
     GLOBAL_BASELINE_DATA = json.load(f)
 
-def vector_to_json(vector, baseline_data):
+def create_tls_mapping(baseline_data):
     """
-    Converts a chromosome vector to the JSON format used by the simulation.
-    Ensures that for each TLS, the sum of phase durations is exactly 90 seconds.
+    Creates a static mapping of the flat GA vector to specific TLS IDs.
+    This prevents us from needing to parse JSON during the generations.
     """
-    new_data = json.loads(json.dumps(baseline_data)) # Deep copy
+    mapping = []
     gene_idx = 0
     
-    # Sort TLS IDs to ensure consistent mapping
-    for tls_id in sorted(new_data["tls_data"].keys()):
-        phases = new_data["tls_data"][tls_id]
-        phase_keys = sorted(phases.keys())
+    for tls_id in sorted(baseline_data["tls_data"].keys()):
+        phase_keys = sorted(baseline_data["tls_data"][tls_id].keys())
         num_phases = len(phase_keys)
         
-        # Get the genes (raw durations) for this TLS
-        raw_durations = vector[gene_idx : gene_idx + num_phases]
+        mapping.append({
+            "tls_id": tls_id,
+            "num_phases": num_phases,
+            "start_idx": gene_idx,
+            "end_idx": gene_idx + num_phases
+        })
         gene_idx += num_phases
         
-        # Normalize raw_durations so they sum to 90
+    return mapping
+
+# Create the map in memory immediately
+TLS_MAPPING = create_tls_mapping(GLOBAL_BASELINE_DATA)
+
+def get_normalized_durations(vector, mapping):
+    """
+    Slices the vector using the mapping and enforces the 90-second rule.
+    Returns a lightweight dictionary: { 'tls_id': [duration1, duration2, ...] }
+    """
+    tls_durations = {}
+    
+    for tls in mapping:
+        tls_id = tls["tls_id"]
+        num_phases = tls["num_phases"]
+        
+        # Grab only the genes for this specific traffic light
+        raw_durations = vector[tls["start_idx"] : tls["end_idx"]]
+        
+        # Enforce the 90-second constraint mathematically
         total_raw = sum(raw_durations)
         if total_raw <= 0:
-            # Fallback: distribute evenly if all genes are 0 or negative
             durations = [90 // num_phases] * num_phases
             durations[-1] += 90 - sum(durations)
         else:
-            # Scale to 90, ensuring each phase has at least 1 second
             durations = [max(1, int(round(d * 90 / total_raw))) for d in raw_durations]
-            
-            # Adjust to ensure exact sum of 90 due to rounding
             current_sum = sum(durations)
             if current_sum != 90:
                 diff = 90 - current_sum
-                # Adjust the largest duration to minimize relative impact
                 idx = int(np.argmax(durations))
                 durations[idx] += diff
-                # Final safety check for 1-second minimum
                 if durations[idx] < 1:
                     durations[idx] = 1
                     new_sum = sum(durations)
-                    # Distribute remaining difference to another phase
                     other_idx = (idx + 1) % num_phases
                     durations[other_idx] += (90 - new_sum)
-
-        for i, phase_key in enumerate(phase_keys):
-            new_data["tls_data"][tls_id][phase_key]["duration"] = int(durations[i])
-            
-    return new_data
+                    
+        tls_durations[tls_id] = durations
+        
+    return tls_durations
 
 def pygad_fitness_func(ga_instance, solution, solution_idx):
     """
-    Fitness function for PyGAD.
-    Optimizes the metric: total_delay + (total_vehicles * 10)
-    where total_vehicles are cars that did not reach the destination.
+    Passes the lightweight dict to the simulator to calculate cost.
     """
-    individual_data = vector_to_json(solution, GLOBAL_BASELINE_DATA)
+    # 1. Get the {tls_id: [durations]} dictionary (Lightning fast!)
+    tls_durations = get_normalized_durations(solution, TLS_MAPPING)
     
     try:
-        # fitness_function from fitness_evaluation.py returns: total_delay + (total_vehicles * 10)
-        composite_fitness = fitness_function(individual_data)
-        # PyGAD maximizes fitness, but we want to minimize delay/cost.
+        composite_fitness = fitness_function(tls_durations)
         return -composite_fitness
     except Exception as e:
         print(f"Error evaluating fitness: {e}")
-        return -9999999.0 # Large penalty for failed simulations
+        return -9999999.0
 
 def custom_callback(ga_instance):
     solution, fitness, idx = ga_instance.best_solution()
     print(f"Generation {ga_instance.generations_completed} completed. Best Cost: {-fitness:.2f}")
 
 def run_genetic_algorithm():
-    # 1. Determine number of genes (total phases across all TLS)
-    num_genes = 0
-    for tls_id in GLOBAL_BASELINE_DATA["tls_data"]:
-        num_genes += len(GLOBAL_BASELINE_DATA["tls_data"][tls_id])
+    # Calculate total genes based on our mapping cheat-sheet
+    num_genes = TLS_MAPPING[-1]["end_idx"]
     
     print(f"Number of genes (phases): {num_genes}")
     print(f"Total cycle duration per TLS: 90 seconds (enforced via normalization)")
     print(f"Optimization Goal: Minimize total_delay + (undelivered_vehicles * 10)")
 
-    # 2. Define gene space
-    gene_space = {'low': 1, 'high': 100}
+    gene_space = {'low': 5, 'high': 85}
 
-    # 3. Initialize PyGAD
     ga_instance = pygad.GA(
         num_generations=PYGAD_NUM_GENERATIONS,
         num_parents_mating=PYGAD_NUM_PARENTS_MATING,
@@ -123,7 +128,6 @@ def run_genetic_algorithm():
         parallel_processing=["process", NUM_PROCESSORS]
     )
 
-    # 4. Run the GA
     print("Starting Genetic Algorithm...")
     start_time = time.time()
     ga_instance.run()
@@ -132,16 +136,22 @@ def run_genetic_algorithm():
     duration = end_time - start_time
     print(f"GA completed in {duration:.2f} seconds")
 
-    # 5. Get the best solution
+    # Extract winning solution
     solution, solution_fitness, solution_idx = ga_instance.best_solution()
     best_cost = -float(solution_fitness)
-    print(f"Best solution cost (lower is better): {best_cost}")
+    print(f"Best solution cost: {best_cost}")
     
-    # Normalize the best solution for the final output
-    best_json = vector_to_json(solution, GLOBAL_BASELINE_DATA)
+    # Reconstruct the full JSON structure for the final save using the winner
+    winning_durations = get_normalized_durations(solution, TLS_MAPPING)
+    best_json = json.loads(json.dumps(GLOBAL_BASELINE_DATA))
+    for tls_id, phases in winning_durations.items():
+        phase_keys = sorted(best_json["tls_data"][tls_id].keys())
+        for i, p_key in enumerate(phase_keys):
+            best_json["tls_data"][tls_id][p_key]["duration"] = int(phases[i])
+            
     best_json["composite_cost"] = best_cost
     
-    # 6. Save results
+    # Save results
     output_dir = Path("src/outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
     

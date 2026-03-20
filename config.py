@@ -8,7 +8,7 @@ MUTATION_RATE = 0.01
 CROSSOVER_RATE = 0.7
 
 # pygad configuration parameters
-PYGAD_POPULATION_SIZE = 3
+PYGAD_POPULATION_SIZE = 5
 PYGAD_NUM_GENERATIONS = 2
 PYGAD_MUTATION_PERCENT_GENES = 10
 PYGAD_NUM_PARENTS_MATING = 2
@@ -23,9 +23,10 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "src/sumo_setup/osm.sumocf
 SUMO_ARGS = [
     "sumo", 
     "-c", CONFIG_FILE, 
-    "--no-step-log", "true", 
-    "--no-warnings", "true",
-    "--time-to-teleport", "-1",  
+    "--no-step-log",          
+    "--no-warnings",          
+    "--time-to-teleport", "-1", 
+    "--duration-log.disable"   
 ]
 BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/outputs/baseline_traffic_data.json")
 OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_traffic_cycles.json")
