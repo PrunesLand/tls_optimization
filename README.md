@@ -23,7 +23,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization
     ```
 
-2.5. **Run GA with PyGad**
+3. **Run GA with PyGad**
 
     This will run the PyGad Implementation of the Genetic Algorithm.
 
@@ -31,7 +31,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.pygad_genetic_algorithm
     ```
 
-3. **View map statistics**
+4. **View map statistics**
 
     Will display statistics of the downloaded map and traffic network
 
@@ -39,14 +39,14 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.statistics
     ```
     
-4. **Generate network data**
+5. **Generate network data**
 
     This will generate network data that will have phase durations assigned for individual TLS. This is required step to run the optimization algorithm.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.generation
     ```
-5. **Generate map**
+6. **Generate map**
 
     This will generate a new map following `osm.netccfg` configurations.
 
