@@ -53,6 +53,13 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization netconvert -c osm.netccfg
     ```
+7. **Discover TLS linkage**
+
+    This will discover linkage of TLS by Direct Linkage Empirical Discovery.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.dled_optimizer
+    ```
 
 ## Docker cleaning commands
 
