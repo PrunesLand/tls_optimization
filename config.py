@@ -26,7 +26,8 @@ SUMO_ARGS = [
     "--no-step-log",          
     "--no-warnings",          
     "--time-to-teleport", "-1", 
-    "--duration-log.disable"   
+    "--duration-log.disable",
+    "--duration-log.statistics", "false",   
 ]
 BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/outputs/baseline_traffic_data.json")
 OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_traffic_cycles.json")
