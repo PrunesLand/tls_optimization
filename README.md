@@ -53,7 +53,18 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization netconvert -c osm.netccfg
     ```
-7. **Discover TLS linkage**
+
+7. **Configure Simulator variables**
+
+    Configure SUMO Simulator variables when running every simulation.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization bash -c 'python $SUMO_HOME/tools/randomTrips.py -n osm.net.xml.gz -o osm.rou.xml'
+    ```
+
+    You can change from random trips to a specific configuration such as setting the specific number of cars generated per second or setting the total number of cars within every simulation.
+
+8. **Discover TLS linkage**
 
     This will discover linkage of TLS by Direct Linkage Empirical Discovery.
 
