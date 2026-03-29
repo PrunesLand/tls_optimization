@@ -2,15 +2,14 @@ import json
 from pathlib import Path
 from src.sumo_setup.extraction import extract_traffic_light_data
 
+
 def get_min_max_stats():
     extracted = extract_traffic_light_data(detail=True)
-
     if not extracted:
         print("No data extracted. Ensure SUMO is configured correctly.")
         return
 
     tls_json_data = extracted.get("tls_data", {})
-
     if not tls_json_data:
         print("No traffic light data found.")
         return
@@ -23,7 +22,6 @@ def get_min_max_stats():
     for _, data in tls_json_data.items():
         metadata = data.get("metadata", {})
         phases = data.get("phases", {})
-
         stats['lanes'].append(metadata.get("number_of_lanes", 0))
         stats['signals'].append(metadata.get("number_of_signals", 0))
         stats['phases'].append(metadata.get("total_phases", 0))
@@ -38,6 +36,9 @@ def get_min_max_stats():
                 stats['yellow'].append(duration)
             else:
                 stats['red'].append(duration)
+
+    total_phases_all_tls = sum(stats['phases'])
+    extracted["total_phases_all_tls"] = total_phases_all_tls
 
     try:
         output_dir = Path("src/outputs")
@@ -58,6 +59,7 @@ def get_min_max_stats():
         )
 
     print(f"\nTotal Intersections Analyzed: {len(tls_json_data)}")
+    print(f"Total Phases (all TLS):    {total_phases_all_tls}")
     print(f"\n{' NETWORK EXTREMA REPORT ':=^50}")
     report("Lanes Controlled", stats['lanes'])
     report("Signal Heads", stats['signals'])
@@ -68,6 +70,7 @@ def get_min_max_stats():
     report("Yellow Duration", stats['yellow'], "s")
     report("Red Duration", stats['red'], "s")
     print("=" * 50)
+
 
 if __name__ == "__main__":
     get_min_max_stats()
