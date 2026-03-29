@@ -1,5 +1,4 @@
 import os
-import multiprocessing
 
 # configuration parameters for the genetic algorithm
 POPULATION = 300
