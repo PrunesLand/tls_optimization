@@ -27,11 +27,15 @@ separable genes can be treated independently.
 import json
 import math
 import os
+import sys
 import time
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
+
+# Add project root to sys.path so config and other modules are importable
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 
 # ---------------------------------------------------------------------------
@@ -443,10 +447,13 @@ class TrafficFitnessWrapper:
 def build_traffic_fitness_wrapper(
     baseline_data: dict,
     fitness_function: Callable[[dict], float],
-    tls_mapping: list[dict],
 ) -> tuple[Callable[[np.ndarray], float], int, np.ndarray, np.ndarray, list[str]]:
     """
     Build a picklable fitness wrapper compatible with multiprocessing.
+
+    Derives the TLS mapping directly from *baseline_data* (matching the pattern
+    used in pygad_genetic_algorithm.py and dled_optimizer.py) so the caller
+    only needs to supply the loaded JSON — the mapping is not a separate arg.
 
     Returns
     -------
@@ -456,6 +463,21 @@ def build_traffic_fitness_wrapper(
     x_upper  : upper bounds (all 85.0)
     labels   : gene names, e.g. ["J4_phase0", "J4_phase1", ...]
     """
+    # Build the TLS mapping from baseline_data — identical logic to the other
+    # optimizers so every file stays consistent.
+    tls_mapping = []
+    gene_idx = 0
+    for tls_id in sorted(baseline_data["tls_data"].keys()):
+        phase_keys = sorted(baseline_data["tls_data"][tls_id].keys())
+        num_phases = len(phase_keys)
+        tls_mapping.append({
+            "tls_id": tls_id,
+            "num_phases": num_phases,
+            "start_idx": gene_idx,
+            "end_idx": gene_idx + num_phases,
+        })
+        gene_idx += num_phases
+
     n       = tls_mapping[-1]["end_idx"]
     x_lower = np.full(n, 5.0)
     x_upper = np.full(n, 85.0)
@@ -482,18 +504,30 @@ def _toy_f(x: np.ndarray) -> float:
 
 
 if __name__ == "__main__":
+    from config import BASELINE_TRAFFIC_DATA
+    from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
+
     print("=" * 60)
-    print("DG2 — parallel self-test  (synthetic function)")
+    print("DG2 — interaction detection on real baseline traffic data")
     print("=" * 60)
 
-    n_test = 7
+    # Load the real baseline data (same pattern as the other optimizers)
+    with open(BASELINE_TRAFFIC_DATA, "r") as _fh:
+        baseline_data = json.load(_fh)
+
+    # Build the wrapper — tls_mapping is derived from baseline_data internally
+    f, n, x_lower, x_upper, labels = build_traffic_fitness_wrapper(
+        baseline_data    = baseline_data,
+        fitness_function = _traffic_fitness,
+    )
+
     results = run_dg2(
-        f           = _toy_f,
-        n           = n_test,
-        x_lower     = np.zeros(n_test),
-        x_upper     = np.full(n_test, 10.0),
-        gene_labels = [f"gene_{i}" for i in range(n_test)],
-        output_path = "dg2_results.json",
+        f           = f,
+        n           = n,
+        x_lower     = x_lower,
+        x_upper     = x_upper,
+        gene_labels = labels,
+        output_path = "src/outputs/dg2_results.json",
         verbose     = True,
     )
 
