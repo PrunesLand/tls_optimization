@@ -56,7 +56,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
 
 7. **Configure Simulator variables**
 
-    Configure SUMO Simulator variables when running every simulation.
+    Configure SUMO Simulator variables when running every simulation. We are now using precalculated routes. this step is not necessary.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization bash -c 'python $SUMO_HOME/tools/randomTrips.py -n osm.net.xml.gz -o osm.rou.xml'
