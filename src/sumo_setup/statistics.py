@@ -71,6 +71,14 @@ def get_min_max_stats():
     report("Red Duration", stats['red'], "s")
     print("=" * 50)
 
+    print(f"\n{' PHASE COUNT DISTRIBUTION ':=^50}")
+    phase_counts = {}
+    for p in stats['phases']:
+        phase_counts[p] = phase_counts.get(p, 0) + 1
+    for p in sorted(phase_counts.keys()):
+        print(f"{str(p) + ' phases':20}: {phase_counts[p]} traffic lights")
+    print("=" * 50)
+
 
 if __name__ == "__main__":
     get_min_max_stats()
