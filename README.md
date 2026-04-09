@@ -23,7 +23,15 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization
     ```
 
-3. **View map statistics**
+3. **Run GA with PyGad**
+
+    This will run the PyGad Implementation of the Genetic Algorithm.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.pygad_genetic_algorithm
+    ```
+
+4. **View map statistics**
 
     Will display statistics of the downloaded map and traffic network
 
@@ -31,19 +39,37 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.statistics
     ```
     
-4. **Generate network data**
+5. **Generate network data**
 
     This will generate network data that will have phase durations assigned for individual TLS. This is required step to run the optimization algorithm.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.sumo_setup.generation
     ```
-5. **Generate map**
+6. **Generate map**
 
     This will generate a new map following `osm.netccfg` configurations.
 
     ```bash
     docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization netconvert -c osm.netccfg
+    ```
+
+7. **Configure Simulator variables**
+
+    Configure SUMO Simulator variables when running every simulation. We are now using precalculated routes. this step is not necessary.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app/src/sumo_setup tls_optimization bash -c 'python $SUMO_HOME/tools/randomTrips.py -n osm.net.xml.gz -o osm.rou.xml'
+    ```
+
+    You can change from random trips to a specific configuration such as setting the specific number of cars generated per second or setting the total number of cars within every simulation.
+
+8. **Discover TLS linkage**
+
+    This will discover linkage of TLS by Direct Linkage Empirical Discovery.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.dled_optimizer
     ```
 
 ## Docker cleaning commands
