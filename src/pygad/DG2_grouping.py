@@ -22,6 +22,16 @@ Usage in traffic light optimisation
 Run DG2 before the genetic algorithm to identify which phase-duration genes
 interact with each other.  Interacting genes should be optimised together;
 separable genes can be treated independently.
+
+Phase duration constraints
+--------------------------
+Phase type is inferred from the dominant character in the state string:
+  Green  (G dominant) : gene bounds [24, 85],  min after clamping = 24 s
+  Yellow (y dominant) : gene bounds [ 3,  6],  clamped to [3, 6] — NOT adjusted
+  Red    (r dominant) : gene bounds [ 5, 85],  min after clamping =  5 s
+
+Cycle length = 90 s.  Any remainder or shortfall after clamping is
+absorbed by the green-or-red phase with the smallest current duration.
 """
 
 import json
@@ -43,6 +53,47 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 # ---------------------------------------------------------------------------
 MACHINE_EPSILON = np.finfo(float).eps          # ≈ 2.220446e-16
 GAMMA2 = 2 * MACHINE_EPSILON / (1 - 2 * MACHINE_EPSILON)   # γ₂  (Theorem S.2)
+
+CYCLE_LENGTH = 90  # seconds
+
+# Per-phase-type bounds and minima
+PHASE_BOUNDS = {
+    "green":  (24, 85),
+    "yellow": ( 3,  6),
+    "red":    ( 5, 85),
+}
+
+
+# ---------------------------------------------------------------------------
+# Phase-type helper
+# ---------------------------------------------------------------------------
+
+def _phase_type(state: str) -> str:
+    """
+    Infer phase type from SUMO state string.
+
+    Counts G/g (green), y (yellow), r/R (red) characters and returns the
+    majority type.  Ties broken in priority order: green > yellow > red.
+
+    Examples
+    --------
+    "GGGG"   -> "green"
+    "yyyy"   -> "yellow"
+    "rrrr"   -> "red"
+    "GGrr"   -> "green"   (2 G vs 2 r — green wins tie)
+    "rrGG"   -> "green"
+    """
+    s = state.lower()
+    counts = {
+        "green":  s.count("g"),
+        "yellow": s.count("y"),
+        "red":    s.count("r"),
+    }
+    # Priority order for ties: green > yellow > red
+    for ptype in ("green", "yellow", "red"):
+        if counts[ptype] == max(counts.values()):
+            return ptype
+    return "red"  # fallback (unreachable)
 
 
 # ---------------------------------------------------------------------------
@@ -410,37 +461,73 @@ class TrafficFitnessWrapper:
     """
     Picklable wrapper around your traffic fitness function.
 
+    Phase duration constraints (applied per TLS per call):
+      - Green  (state dominant 'G'): minimum 24 s, bounds [24, 85]
+      - Yellow (state dominant 'y'): clamped to [3, 6] s — NOT adjusted for remainder
+      - Red    (state dominant 'r'): minimum  5 s, bounds [5, 85]
+
+    After clamping all phases to their type bounds, the difference from the
+    90 s cycle target is absorbed by the green-or-red phase with the smallest
+    current duration (yellow phases are never touched in this step).
+
     A plain closure (lambda or def inside a function) is NOT picklable and
     cannot cross process boundaries.  A class with __call__ IS picklable as
-    long as all its attributes are also picklable — which fitness_function
-    and tls_mapping both are.
+    long as all its attributes are also picklable.
     """
 
     def __init__(self, fitness_function, tls_mapping):
         self.fitness_function = fitness_function
-        self.tls_mapping = tls_mapping
+        self.tls_mapping      = tls_mapping
 
     def __call__(self, vector: np.ndarray) -> float:
         tls_durations = {}
+
         for tls in self.tls_mapping:
-            tls_id     = tls["tls_id"]
-            num_phases = tls["num_phases"]
-            raw        = list(vector[tls["start_idx"]: tls["end_idx"]])
-            total_raw  = sum(raw)
-            if total_raw <= 0:
-                durations = [90 // num_phases] * num_phases
-                durations[-1] += 90 - sum(durations)
-            else:
-                durations = [max(1, int(round(d * 90 / total_raw))) for d in raw]
-                diff = 90 - sum(durations)
-                if diff != 0:
-                    idx = int(np.argmax(durations))
-                    durations[idx] += diff
-                    if durations[idx] < 1:
-                        durations[idx] = 1
-                        other = (idx + 1) % num_phases
-                        durations[other] += 90 - sum(durations)
+            tls_id      = tls["tls_id"]
+            phase_types = tls["phase_types"]   # list of "green"/"yellow"/"red"
+            raw         = list(vector[tls["start_idx"]: tls["end_idx"]])
+            n_phases    = len(raw)
+
+            # ----------------------------------------------------------------
+            # Step 1 — clamp each gene to its per-type bounds
+            # ----------------------------------------------------------------
+            durations = []
+            for raw_val, ptype in zip(raw, phase_types):
+                lo, hi = PHASE_BOUNDS[ptype]
+                durations.append(int(round(max(lo, min(hi, raw_val)))))
+
+            # ----------------------------------------------------------------
+            # Step 2 — adjust for cycle-length target (90 s)
+            #
+            # Yellow phases are fixed after clamping — only green and red
+            # absorb the remainder.  We find the green-or-red phase with the
+            # smallest current duration and add/subtract there.
+            # ----------------------------------------------------------------
+            remainder = CYCLE_LENGTH - sum(durations)
+
+            if remainder != 0:
+                # Indices of adjustable (green or red) phases
+                adjustable = [
+                    i for i, ptype in enumerate(phase_types)
+                    if ptype in ("green", "red")
+                ]
+
+                if adjustable:
+                    # Pick the adjustable phase with the smallest current duration
+                    target_idx = min(adjustable, key=lambda i: durations[i])
+                    durations[target_idx] += remainder
+
+                    # Safety: enforce minimum even after adjustment
+                    lo, _ = PHASE_BOUNDS[phase_types[target_idx]]
+                    if durations[target_idx] < lo:
+                        # Distribute the minimum-violation back to the largest
+                        # adjustable phase to avoid an infeasible solution
+                        durations[target_idx] = lo
+                        fallback = max(adjustable, key=lambda i: durations[i])
+                        durations[fallback] += CYCLE_LENGTH - sum(durations)
+
             tls_durations[tls_id] = durations
+
         return self.fitness_function(tls_durations)
 
 
@@ -451,41 +538,55 @@ def build_traffic_fitness_wrapper(
     """
     Build a picklable fitness wrapper compatible with multiprocessing.
 
-    Derives the TLS mapping directly from *baseline_data* (matching the pattern
-    used in pygad_genetic_algorithm.py and dled_optimizer.py) so the caller
-    only needs to supply the loaded JSON — the mapping is not a separate arg.
+    Derives the TLS mapping (including per-phase type from the state string)
+    directly from *baseline_data*, so the caller only needs to supply the
+    loaded JSON.
+
+    Gene bounds are set per phase type:
+      green  -> [24, 85]
+      yellow -> [ 3,  6]
+      red    -> [ 5, 85]
 
     Returns
     -------
     f        : TrafficFitnessWrapper instance (picklable, safe for DG2 workers)
     n        : number of genes
-    x_lower  : lower bounds (all 5.0)
-    x_upper  : upper bounds (all 85.0)
-    labels   : gene names, e.g. ["J4_phase0", "J4_phase1", ...]
+    x_lower  : lower bounds per gene (type-aware)
+    x_upper  : upper bounds per gene (type-aware, all 85 except yellow capped at 6)
+    labels   : gene names, e.g. ["186797066_phase_1", "186797066_phase_2", ...]
     """
-    # Build the TLS mapping from baseline_data — identical logic to the other
-    # optimizers so every file stays consistent.
     tls_mapping = []
-    gene_idx = 0
+    gene_idx    = 0
+    x_lower_list: list[float] = []
+    x_upper_list: list[float] = []
+    labels:       list[str]   = []
+
     for tls_id in sorted(baseline_data["tls_data"].keys()):
-        phase_keys = sorted(baseline_data["tls_data"][tls_id].keys())
-        num_phases = len(phase_keys)
+        phase_keys  = sorted(baseline_data["tls_data"][tls_id].keys())
+        phase_types = []
+
+        for pk in phase_keys:
+            state = baseline_data["tls_data"][tls_id][pk].get("state", "")
+            ptype = _phase_type(state)
+            phase_types.append(ptype)
+
+            lo, hi = PHASE_BOUNDS[ptype]
+            x_lower_list.append(float(lo))
+            x_upper_list.append(float(hi))
+            labels.append(f"{tls_id}_{pk}")
+
         tls_mapping.append({
-            "tls_id": tls_id,
-            "num_phases": num_phases,
-            "start_idx": gene_idx,
-            "end_idx": gene_idx + num_phases,
+            "tls_id":      tls_id,
+            "num_phases":  len(phase_keys),
+            "phase_types": phase_types,
+            "start_idx":   gene_idx,
+            "end_idx":     gene_idx + len(phase_keys),
         })
-        gene_idx += num_phases
+        gene_idx += len(phase_keys)
 
-    n       = tls_mapping[-1]["end_idx"]
-    x_lower = np.full(n, 5.0)
-    x_upper = np.full(n, 85.0)
-
-    labels = []
-    for tls in tls_mapping:
-        for phase_idx in range(tls["num_phases"]):
-            labels.append(f"{tls['tls_id']}_phase{phase_idx}")
+    n       = gene_idx
+    x_lower = np.array(x_lower_list, dtype=float)
+    x_upper = np.array(x_upper_list, dtype=float)
 
     f = TrafficFitnessWrapper(fitness_function, tls_mapping)
     return f, n, x_lower, x_upper, labels
@@ -522,11 +623,11 @@ if __name__ == "__main__":
     )
 
     results = run_dg2(
-        f           = f,
-        n           = n,
-        x_lower     = x_lower,
-        x_upper     = x_upper,
-        gene_labels = labels,
+        f           = _toy_f,
+        n           = 7,
+        x_lower     = np.zeros(7),
+        x_upper     = np.ones(7),
+        # gene_labels = labels,
         output_path = "src/outputs/dg2_results.json",
         verbose     = True,
     )
