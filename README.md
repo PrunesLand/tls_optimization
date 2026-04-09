@@ -71,6 +71,13 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.dled_optimizer
     ```
+9. **Execute DG2 Grouping**
+
+    This will execute Differential Grouping method as an alternative to linkage discovery. Theoretically it is faster than Embpirical Linkage Learning.
+
+   ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.DG2_grouping
+   ```
 
 ## Docker cleaning commands
 
