@@ -10,7 +10,7 @@
     <input>
         <type-files value="${SUMO_HOME}/data/typemap/osmNetconvert.typ.xml"/>
         <!-- The input OSM file containing the road network data. -->
-        <osm-files value="osm_golden.osm.xml.gz"/>
+        <osm-files value="osm_golden_v4.osm.xml.gz"/>
     </input>
 
     <output>

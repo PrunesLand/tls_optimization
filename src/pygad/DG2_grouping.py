@@ -623,11 +623,11 @@ if __name__ == "__main__":
     )
 
     results = run_dg2(
-        f           = _toy_f,
-        n           = 7,
-        x_lower     = np.zeros(7),
-        x_upper     = np.ones(7),
-        # gene_labels = labels,
+        f           = f,
+        n           = n,
+        x_lower     = x_lower,
+        x_upper     = x_upper,
+        gene_labels = labels,
         output_path = "src/outputs/dg2_results.json",
         verbose     = True,
     )
