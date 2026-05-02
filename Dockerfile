@@ -1,4 +1,4 @@
-# Base image with Python 3.9
+# Base image with Python 3.11
 FROM python:3.11-slim
 
 # Set the primary working directory
@@ -27,5 +27,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project source code into the container.
 COPY . /app
 
-# Default command to execute the main application.
-CMD ["python", "main.py"]
+# Ensure the entrypoint script is executable inside the container.
+RUN chmod +x /app/entrypoint.sh
+
+# Use the entrypoint script as the container's entrypoint.
+# By default it runs the full pipeline (setup + IRRG).
+# Override with: docker run tls_optimization <command>
+#   setup       - generation + netconvert only
+#   run         - IRRG only (assumes setup was done before)
+#   all         - full pipeline (default)
+#   <arbitrary> - pass-through (e.g. bash, python ...)
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["all"]
