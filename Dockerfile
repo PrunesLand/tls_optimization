@@ -37,5 +37,5 @@ RUN chmod +x /app/entrypoint.sh
 #   run         - IRRG only (assumes setup was done before)
 #   all         - full pipeline (default)
 #   <arbitrary> - pass-through (e.g. bash, python ...)
-ENTRYPOINT ["/app/entrypoint.sh"]
+# ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["all"]
