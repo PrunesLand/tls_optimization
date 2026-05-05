@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import BASELINE_TRAFFIC_DATA, NUM_PROCESSORS
 from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
-from src.pygad.DG2_grouping import build_traffic_fitness_wrapper
+from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
 
 NUM_SOLUTIONS = 100
 NUM_REPEATS = 10
