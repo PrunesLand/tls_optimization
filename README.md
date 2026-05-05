@@ -69,15 +69,30 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     This will discover linkage of TLS by Direct Linkage Empirical Discovery.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.dled_optimizer
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.dled_optimizer
     ```
 9. **Execute DG2 Grouping**
 
     This will execute Differential Grouping method as an alternative to linkage discovery. Theoretically it is faster than Embpirical Linkage Learning.
 
    ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.DG2_grouping
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.DG2_grouping
    ```
+10. **Execute IRRG**
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.IRRG
+    ```
+
+11. **Execute Random Search**
+
+    Performs random search of n solutions and m evaluations for each solutions.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.random_search
+    ```
+
+
 
 ## Docker cleaning commands
 
