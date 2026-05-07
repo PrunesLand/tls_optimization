@@ -6,15 +6,13 @@ import sys
 from pathlib import Path
 
 import gomea
-from gomea.fitness import BBOFitnessFunction
-
+from gomea.fitness import BBOFitnessFunctionRealValued
 # Add project root to sys.path to import config and other modules
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 from config import (
     PYGAD_POPULATION_SIZE,
     PYGAD_NUM_GENERATIONS,
-    NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
 )
 from src.genetic_algorithm.fitness_evaluation import fitness_function
@@ -83,13 +81,11 @@ def get_normalized_durations(vector, mapping):
         
     return tls_durations
 
-class TrafficOptimizationFitness(BBOFitnessFunction):
+class TrafficOptimizationFitness(BBOFitnessFunctionRealValued):
     """
     Custom GOMEA Fitness Function for optimizing traffic light phases.
-    Inherits from gomea's Black-Box Optimization Fitness Function base class.
     """
     def __init__(self, num_variables):
-        # Initialize with number of variables/genes
         self.num_variables = num_variables
         super().__init__()
 
@@ -97,60 +93,47 @@ class TrafficOptimizationFitness(BBOFitnessFunction):
         return self.num_variables
 
     def objective_function(self, objective_index, variables):
-        """
-        Calculates fitness for the given variables configuration.
-        GOMEA expects minimization by default, so we return the raw cost.
-        """
-        # 1. Get the {tls_id: [durations]} dictionary
         tls_durations = get_normalized_durations(variables, TLS_MAPPING)
-        
         try:
-            # Our existing fitness function already returns the composite cost
-            # (total_delay + undelivered_vehicles * 10). GOMEA naturally minimizes.
             composite_cost = fitness_function(tls_durations)
             return float(composite_cost)
         except Exception as e:
             print(f"Error evaluating fitness: {e}")
-            # Return a high penalty for failure
             return 9999999.0
 
 def run_gomea_optimization():
-    # Calculate total genes based on our mapping
     num_genes = TLS_MAPPING[-1]["end_idx"]
     
     print(f"Number of variables (phases): {num_genes}")
     print(f"Total cycle duration per TLS: 90 seconds (enforced via normalization)")
     print(f"Optimization Goal: Minimize total_delay + (undelivered_vehicles * 10)")
 
-    # Instantiate the custom fitness class
     fitness_instance = TrafficOptimizationFitness(num_genes)
     
     print("Initializing GOMEA...")
-    # NOTE: Parameters might need adjustment based on the exact GOMEA Python API
-    # We use RealValuedGOMEA as our variables represent continuous weights 
-    # that are then normalized to valid phase durations.
-    # Assuming typical GOMEA signature where lower/upper bounds can be specified
-    # or it handles unbounded real values. We'll use bounds matching PyGAD (5-85)
-    lower_bounds = [5.0] * num_genes
-    upper_bounds = [85.0] * num_genes
+    lower_bounds = 5.0
+    upper_bounds = 85.0
     
-    # We try RealValuedGOMEA since PyGAD used a continuous-like formulation
-    # normalized into sums. We add number_of_threads to attempt parallelization.
+    lm = gomea.linkage.LinkageTree()
+
+    # 4. Use the correct parameter names for RealValuedGOMEA
     algo = gomea.RealValuedGOMEA(
-        fitness=fitness_instance, 
-        lower_bound=lower_bounds,
-        upper_bound=upper_bounds,
-        population_size=PYGAD_POPULATION_SIZE,
-        max_number_of_evaluations=PYGAD_NUM_GENERATIONS * PYGAD_POPULATION_SIZE,
-        number_of_threads=NUM_PROCESSORS
+        fitness=fitness_instance,
+        linkage_model=lm,
+        lower_init_range=lower_bounds,
+        upper_init_range=upper_bounds,
+        base_population_size=PYGAD_POPULATION_SIZE,
+        max_number_of_evaluations=PYGAD_NUM_GENERATIONS * PYGAD_POPULATION_SIZE
+        # Note: I removed number_of_threads as it often causes Cython signature 
+        # issues depending on the gomea version. Start without it first.
     )
 
     print("Starting GOMEA Optimization...")
     start_time = time.time()
     
     try:
-        # Some GOMEA implementations use algo.run()
-        algo.run()
+        # GOMEA returns a dictionary containing the run metrics
+        result = algo.run()
     except Exception as e:
         print(f"Error during GOMEA execution: {e}")
         return
