@@ -1,3 +1,4 @@
 libsumo
 numpy
 pygad
+gomea
