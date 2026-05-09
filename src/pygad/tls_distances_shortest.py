@@ -22,7 +22,7 @@ def road_distance(net, node_a, node_b) -> float | None:
 def main() -> None:
     project_root = Path(__file__).resolve().parent.parent.parent
     net_file = project_root / "src" / "sumo_setup" / "osm.net.xml.gz"
-    out_json = project_root / "src" / "outputs" / "tls_distances.json"
+    out_json = project_root / "src" / "outputs" / "tls_distances_shortest.json"
 
     print(f"Loading SUMO network from: {net_file} ...")
     net = sumolib.net.readNet(str(net_file))
