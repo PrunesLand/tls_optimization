@@ -15,6 +15,12 @@ If you need to quickly run the full setup and LT-GOMEA optimization pipeline (St
 ./run_pipeline.sh
 ```
 
+**Using the Python Script (Runs inside Docker):**
+If you want to run the pipeline using a single docker command that calls the python script:
+```bash
+docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization python run_pipeline.py
+```
+
 **Using a Single Docker One-Liner (if you prefer no external scripts):**
 ```bash
 docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization bash -c "python -m src.sumo_setup.generation && cd src/sumo_setup && netconvert -c osm.netccfg && cd /app && python -m src.pygad.tls_distances_shortest && python -m src.pygad.tls_distances_euclidian && python -m src.pygad.tls_distances_fastest && python -m src.pygad.plot_dendrograms && python -m src.pygad.lt_gomea_optimizer"
