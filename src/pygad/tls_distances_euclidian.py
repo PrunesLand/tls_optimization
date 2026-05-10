@@ -24,7 +24,7 @@ def euclidean_distance(node_a, node_b) -> float:
 def main() -> None:
     project_root = Path(__file__).resolve().parent.parent.parent
     net_file = project_root / "src" / "sumo_setup" / "osm.net.xml.gz"
-    out_json = project_root / "src" / "outputs" / "tls_distances.json"
+    out_json = project_root / "src" / "outputs" / "tls_distances_euclidian.json"
 
     print(f"Loading SUMO network from: {net_file} ...")
     net = sumolib.net.readNet(str(net_file))

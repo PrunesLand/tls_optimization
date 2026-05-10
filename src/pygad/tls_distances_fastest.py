@@ -100,7 +100,7 @@ def plot_cluster_map(threshold=300) -> None:
         data = json.load(f)
 
     tls_list = data["traffic_lights"]
-    matrix = data["distance_matrix"]
+    matrix = data["travel_time_matrix"]
     ids = [t["id"] for t in tls_list]
     n = len(ids)
 
