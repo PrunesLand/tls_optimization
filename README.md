@@ -6,6 +6,20 @@ This is my take on optimizing traffic light controls as a discrete type problem 
 
 
 
+## Quick Start Pipeline (Rental Machine Setup)
+
+If you need to quickly run the full setup and LT-GOMEA optimization pipeline (Steps 1, 5, 6, 13, and 12), you can use the automated bash script provided in the root directory:
+
+**Using the Bash Script:**
+```bash
+./run_pipeline.sh
+```
+
+**Using a Single Docker One-Liner (if you prefer no external scripts):**
+```bash
+docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization bash -c "python -m src.sumo_setup.generation && cd src/sumo_setup && netconvert -c osm.netccfg && cd /app && python -m src.pygad.tls_distances_shortest && python -m src.pygad.tls_distances_euclidian && python -m src.pygad.tls_distances_fastest && python -m src.pygad.plot_dendrograms && python -m src.pygad.lt_gomea_optimizer"
+```
+
 ## How to run
 
 1. **Building with Docker**
