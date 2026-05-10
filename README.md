@@ -102,6 +102,20 @@ This is my take on optimizing traffic light controls as a discrete type problem 
 
 
 
+13. **Generate Distance Matrices & Dendrograms**
+
+    Calculates the network distance matrices (Shortest, Euclidian, Fastest) and generates hierarchical clustering dendrogram plots used by the LT-GOMEA optimizer.
+
+    ```bash
+    # Generate the distance matrices
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_shortest
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_euclidian
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_fastest
+
+    # Plot the dendrograms
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.plot_dendrograms
+    ```
+
 ## Docker cleaning commands
 
 Docker has build-in commands that are ment to be used for house keeping tasks:
