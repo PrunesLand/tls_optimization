@@ -92,6 +92,14 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.random_search
     ```
 
+12. **Execute LT-GOMEA Optimizer**
+
+    Runs the Linkage Tree Gene-pool Optimal Mixing Evolutionary Algorithm (LT-GOMEA). Uses threshold-based clusters from distance matrices to guide the optimal mixing operator. This will execute the entire 9-run experiment matrix (3 trees × 3 population strategies).
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.lt_gomea_optimizer
+    ```
+
 
 
 ## Docker cleaning commands
