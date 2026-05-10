@@ -15,10 +15,9 @@ If you need to quickly run the full setup and LT-GOMEA optimization pipeline (St
 ./run_pipeline.sh
 ```
 
-**Using the Python Script (Runs inside Docker):**
-If you want to run the pipeline using a single docker command that calls the python script:
+**Using the Python Script:**
 ```bash
-docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization python run_pipeline.py
+python run_pipeline.py
 ```
 
 **Using a Single Docker One-Liner (if you prefer no external scripts):**
