@@ -48,14 +48,27 @@ def analyze_linkage(distance_json):
         min_cluster_size = np.min(counts)
         
         if min_cluster_size >= 2:
-            valid_num_clusters.append(num_clusters)
+            valid_num_clusters.append((num_clusters, t))
             if num_clusters > max_non_singleton_clusters:
                 max_non_singleton_clusters = num_clusters
                 best_threshold = t
                 best_distribution = counts
                 
-    median_valid_clusters = math.ceil(np.median(valid_num_clusters)) if valid_num_clusters else 0
+    valid_counts = [item[0] for item in valid_num_clusters]
+    median_valid_clusters = math.ceil(np.median(valid_counts)) if valid_counts else 0
     median_cluster_size = math.ceil(np.median(best_distribution)) if len(best_distribution) > 0 else 0
+    
+    if valid_num_clusters:
+        closest_count = min(valid_counts, key=lambda x: abs(x - median_valid_clusters))
+        median_thresholds = [item[1] for item in valid_num_clusters if item[0] == closest_count]
+        if len(median_thresholds) > 1:
+            thresholds_str = f"between ~{min(median_thresholds):.2f} and ~{max(median_thresholds):.2f}"
+        else:
+            thresholds_str = f"~{median_thresholds[0]:.2f}"
+        actual_count_str = f" (actual clusters: {closest_count})" if closest_count != median_valid_clusters else ""
+    else:
+        thresholds_str = "N/A"
+        actual_count_str = ""
                 
     print(f"Total Traffic Lights (IDs): {n}")
     print(f"Maximum possible clusters (all singletons): {n}")
@@ -63,6 +76,7 @@ def analyze_linkage(distance_json):
     print(f"  -> {max_non_singleton_clusters} clusters (at distance threshold ~{best_threshold:.2f})")
     print(f"  -> Median cluster size at this threshold: {median_cluster_size}")
     print(f"  -> Median number of clusters across all valid non-singleton thresholds: {median_valid_clusters}")
+    print(f"     -> Thresholds yielding this median{actual_count_str}: {thresholds_str}")
 
 if __name__ == '__main__':
     root = Path(__file__).resolve().parent.parent.parent
