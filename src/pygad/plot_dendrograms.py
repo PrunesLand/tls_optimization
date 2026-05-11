@@ -63,7 +63,7 @@ def plot_fastest_dendrogram(filepath, out_dir):
     plt.xlabel("Traffic Light ID")
     plt.ylabel("Distance")
     # Configure y-axis scale, limits, and ticks for fastest
-    max_y = CLUSTER_THRESHOLD_FASTEST * 0.8
+    max_y = CLUSTER_THRESHOLD_FASTEST * 1.1
     plt.ylim(0, max_y)
     ticks = np.linspace(0, max_y, 6)
     plt.yticks(ticks, [f"{t:.1f}" for t in ticks])
