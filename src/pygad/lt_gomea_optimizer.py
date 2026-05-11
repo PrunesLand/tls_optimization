@@ -6,7 +6,9 @@ Runs 9 experiments: 3 linkage trees × 3 population strategies.
 
 Usage:  python -m src.pygad.lt_gomea_optimizer
 """
-
+from config import CLUSTER_THRESHOLD_FASTEST
+from config import CLUSTER_THRESHOLD_SHORTEST
+from config import CLUSTER_THRESHOLD_EUCLIDIAN
 import json, copy, time, os, sys
 import numpy as np
 from pathlib import Path
@@ -26,9 +28,9 @@ from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
 
 # Thresholds matching the dendrogram plots (from plot_dendrograms.py)
 THRESHOLDS = {
-    "shortest":  3000,
-    "euclidian": 2500,
-    "fastest":   300,
+    "shortest":  CLUSTER_THRESHOLD_SHORTEST,
+    "euclidian": CLUSTER_THRESHOLD_EUCLIDIAN,
+    "fastest":   CLUSTER_THRESHOLD_FASTEST,
 }
 
 GENE_LOW, GENE_HIGH = 5.0, 85.0
