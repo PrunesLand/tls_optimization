@@ -127,15 +127,15 @@ def plot_euclidean_dendrogram(filepath, out_dir):
     # --- Threshold Dendrogram ---
     plt.figure(figsize=(14, 8))
     # Configure threshold and colors for euclidean
-    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=2500, above_threshold_color='none')
+    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=3500, above_threshold_color='none')
     plt.title("Euclidean Distance (Metres) - Threshold")
     plt.xlabel("Traffic Light ID")
     plt.ylabel("Distance (symlog scale)")
     # Configure y-axis scale, limits, and ticks for euclidean
     # plt.yscale('symlog', linthresh=1000)
-    plt.ylim(0, 2500)
-    ticks = [0, 500,1000,1500,2000,2500]
-    plt.yticks(range(0, 2501, 500))
+    plt.ylim(0, 3500)
+    ticks = [0, 500,1000,1500,2000,2500, 3000, 3500]
+    plt.yticks(range(0, 3501, 500))
     plt.tight_layout()
     out_png_thresh = out_dir / "linkage_dendrogram_euclidian_threshold.png"
     plt.savefig(out_png_thresh, dpi=300)

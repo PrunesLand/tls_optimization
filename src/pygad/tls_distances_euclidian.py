@@ -80,7 +80,7 @@ def main() -> None:
 
     print(f"\nDone! Results saved to: {out_json}")
 
-def plot_cluster_map(threshold=2500) -> None:
+def plot_cluster_map(threshold=3500) -> None:
     """
     Cluster traffic lights using Ward linkage at the given distance threshold
     (matching the dendrogram color_threshold) and plot them on a Folium map.
