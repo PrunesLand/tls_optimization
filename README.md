@@ -135,6 +135,14 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.plot_dendrograms
     ```
 
+14. **Analyze Linkage Statistics**
+
+    Analyzes the calculated distance matrices to determine the optimal clustering thresholds, calculating max valid non-singleton clusters and the median cluster size for each distance metric.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.linkage_analyzer
+    ```
+
 ## Docker cleaning commands
 
 Docker has build-in commands that are ment to be used for house keeping tasks:

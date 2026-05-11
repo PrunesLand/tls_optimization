@@ -1,4 +1,5 @@
 import json
+import math
 import numpy as np
 from pathlib import Path
 from scipy.cluster.hierarchy import linkage, fcluster
@@ -31,6 +32,7 @@ def analyze_linkage(distance_json):
     max_non_singleton_clusters = 0
     best_threshold = 0
     best_distribution = []
+    valid_num_clusters = []
 
     # Z[:, 2] contains the distances at which merges happen.
     # We can use these as thresholds to see the state of clusters.
@@ -46,16 +48,21 @@ def analyze_linkage(distance_json):
         min_cluster_size = np.min(counts)
         
         if min_cluster_size >= 2:
+            valid_num_clusters.append(num_clusters)
             if num_clusters > max_non_singleton_clusters:
                 max_non_singleton_clusters = num_clusters
                 best_threshold = t
-                # best_distribution = counts
+                best_distribution = counts
+                
+    median_valid_clusters = math.ceil(np.median(valid_num_clusters)) if valid_num_clusters else 0
+    median_cluster_size = math.ceil(np.median(best_distribution)) if len(best_distribution) > 0 else 0
                 
     print(f"Total Traffic Lights (IDs): {n}")
     print(f"Maximum possible clusters (all singletons): {n}")
     print(f"Maximum clusters formed where ALL IDs belong to a cluster of size >= 2:")
     print(f"  -> {max_non_singleton_clusters} clusters (at distance threshold ~{best_threshold:.2f})")
-    # print(f"  -> Cluster sizes: {list(best_distribution)}")
+    print(f"  -> Median cluster size at this threshold: {median_cluster_size}")
+    print(f"  -> Median number of clusters across all valid non-singleton thresholds: {median_valid_clusters}")
 
 if __name__ == '__main__':
     root = Path(__file__).resolve().parent.parent.parent
