@@ -8,6 +8,11 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 import folium
 
+project_root_dir = Path(__file__).resolve().parent.parent.parent
+if str(project_root_dir) not in sys.path:
+    sys.path.insert(0, str(project_root_dir))
+import config
+
 # Colours available in Folium markers
 CLUSTER_COLOURS = [
     "red", "blue", "green", "purple", "orange",
@@ -80,7 +85,7 @@ def main() -> None:
 
     print(f"\nDone! Results saved to: {out_json}")
 
-def plot_cluster_map(threshold=3500) -> None:
+def plot_cluster_map(threshold=config.CLUSTER_THRESHOLD_EUCLIDIAN) -> None:
     """
     Cluster traffic lights using Ward linkage at the given distance threshold
     (matching the dendrogram color_threshold) and plot them on a Folium map.
