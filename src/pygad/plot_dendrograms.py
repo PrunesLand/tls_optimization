@@ -1,3 +1,6 @@
+from config import CLUSTER_THRESHOLD_FASTEST
+from config import CLUSTER_THRESHOLD_SHORTEST
+from config import CLUSTER_THRESHOLD_EUCLIDIAN
 import json
 import numpy as np
 from pathlib import Path
@@ -55,15 +58,15 @@ def plot_fastest_dendrogram(filepath, out_dir):
     # --- Threshold Dendrogram ---
     plt.figure(figsize=(14, 8))
     # Configure threshold and colors for fastest
-    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=300, above_threshold_color='none')
+    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=CLUSTER_THRESHOLD_FASTEST, above_threshold_color='none')
     plt.title("Fastest Path (Travel Time) - Threshold")
     plt.xlabel("Traffic Light ID")
-    plt.ylabel("Distance (symlog scale)")
+    plt.ylabel("Distance")
     # Configure y-axis scale, limits, and ticks for fastest
-    plt.yscale('symlog', linthresh=50)
-    plt.ylim(0, 250)
-    ticks = [0, 10, 20, 30, 40, 50, 100, 250]
-    plt.yticks(ticks, ticks)
+    max_y = CLUSTER_THRESHOLD_FASTEST * 0.8
+    plt.ylim(0, max_y)
+    ticks = np.linspace(0, max_y, 6)
+    plt.yticks(ticks, [f"{t:.1f}" for t in ticks])
     plt.tight_layout()
     out_png_thresh = out_dir / "linkage_dendrogram_fastest_threshold.png"
     plt.savefig(out_png_thresh, dpi=300)
@@ -91,15 +94,15 @@ def plot_shortest_dendrogram(filepath, out_dir):
     # --- Threshold Dendrogram ---
     plt.figure(figsize=(14, 8))
     # Configure threshold and colors for shortest
-    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=3000, above_threshold_color='none')
+    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=CLUSTER_THRESHOLD_SHORTEST, above_threshold_color='none')
     plt.title("Shortest Path (Metres) - Threshold")
     plt.xlabel("Traffic Light ID")
-    plt.ylabel("Distance (symlog scale)")
+    plt.ylabel("Distance")
     # Configure y-axis scale, limits, and ticks for shortest
-    # plt.yscale('symlog', linthresh=50)
-    plt.ylim(0, 3000)
-    ticks = [0, 10, 20, 30, 40, 50, 100, 250, 500, 800, 3000]
-    plt.yticks(ticks, ticks)
+    max_y = CLUSTER_THRESHOLD_SHORTEST * 1.2
+    plt.ylim(0, max_y)
+    ticks = np.linspace(0, max_y, 8)
+    plt.yticks(ticks, [f"{t:.1f}" for t in ticks])
     plt.tight_layout()
     out_png_thresh = out_dir / "linkage_dendrogram_shortest_threshold.png"
     plt.savefig(out_png_thresh, dpi=300)
@@ -127,15 +130,15 @@ def plot_euclidean_dendrogram(filepath, out_dir):
     # --- Threshold Dendrogram ---
     plt.figure(figsize=(14, 8))
     # Configure threshold and colors for euclidean
-    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=3500, above_threshold_color='none')
+    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=CLUSTER_THRESHOLD_EUCLIDIAN, above_threshold_color='none')
     plt.title("Euclidean Distance (Metres) - Threshold")
     plt.xlabel("Traffic Light ID")
-    plt.ylabel("Distance (symlog scale)")
+    plt.ylabel("Distance")
     # Configure y-axis scale, limits, and ticks for euclidean
-    # plt.yscale('symlog', linthresh=1000)
-    plt.ylim(0, 3500)
-    ticks = [0, 500,1000,1500,2000,2500, 3000, 3500]
-    plt.yticks(range(0, 3501, 500))
+    max_y = CLUSTER_THRESHOLD_EUCLIDIAN * 1.2
+    plt.ylim(0, max_y)
+    ticks = np.linspace(0, max_y, 8)
+    plt.yticks(ticks, [f"{t:.1f}" for t in ticks])
     plt.tight_layout()
     out_png_thresh = out_dir / "linkage_dendrogram_euclidian_threshold.png"
     plt.savefig(out_png_thresh, dpi=300)
