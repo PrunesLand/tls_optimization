@@ -31,7 +31,6 @@ THRESHOLDS = {
 }
 
 GENE_LOW, GENE_HIGH = 5.0, 85.0
-MAX_DOWNSTREAM_OFFSET = 5.0   # max extra seconds the downstream TLS may add
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -128,9 +127,9 @@ def _mix(args):
     # First (upstream) stays at baseline
     for i in first_idx:
         child[i] = bvec[i]
-    # Second (downstream) may be equal or slightly above baseline
-    for i in second_idx:
-        child[i] = np.clip(child[i], bvec[i], bvec[i] + MAX_DOWNSTREAM_OFFSET)
+    # Second (downstream) can vary freely — the 90s normalization in
+    # _rebuild_json / TrafficFitnessWrapper handles cycle constraints.
+    # Different gene ratios produce different green/red phase splits.
 
     child = np.clip(child, GENE_LOW, GENE_HIGH)
     child_fit = float(wrapper(child))
@@ -172,10 +171,28 @@ def run_paired_gomea(tree_name, dist_path, strategy, baseline_data,
     gene_masks = [_gene_indices([p["first"], p["second"]], tls_to_genes) for p in pairs]
     gene_masks = [m for m in gene_masks if m]
 
-    # Init population (all baseline, then perturb paired genes)
+    # Init population — upstream genes stay at baseline, downstream varies
     pop = np.tile(baseline_vec, (pop_size, 1))
-    for idx in second_idx:
-        pop[:, idx] = baseline_vec[idx] + rng.uniform(0, MAX_DOWNSTREAM_OFFSET, pop_size)
+
+    if strategy == "random":
+        # Downstream gets random values across the full gene range
+        for idx in second_idx:
+            pop[:, idx] = rng.uniform(GENE_LOW, GENE_HIGH, pop_size)
+
+    elif strategy == "baseline":
+        # Downstream gets Gaussian perturbation around baseline
+        for idx in second_idx:
+            pop[:, idx] = baseline_vec[idx] + rng.normal(0, noise_std, pop_size) * baseline_vec[idx]
+
+    elif strategy == "mixed":
+        half = pop_size // 2
+        # First half: random
+        for idx in second_idx:
+            pop[:half, idx] = rng.uniform(GENE_LOW, GENE_HIGH, half)
+        # Second half: baseline-perturbed
+        for idx in second_idx:
+            pop[half:, idx] = baseline_vec[idx] + rng.normal(0, noise_std, pop_size - half) * baseline_vec[idx]
+
     pop = np.clip(pop, GENE_LOW, GENE_HIGH)
 
     fit = _eval_pop(wrapper, pop, n_workers)
