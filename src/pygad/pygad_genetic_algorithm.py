@@ -5,6 +5,8 @@ Optimizes the baseline TLS configuration using a classic GA (selection,
 crossover, mutation) with parallel fitness evaluation via SUMO.
 
 Output format matches lt_gomea_optimizer.py for easy comparison.
+Runs on 9 scenarios (euclidian, shortest, fastest X random, baseline, mixed)
+to provide a 1:1 comparison base.
 
 Usage:  python -m src.pygad.pygad_genetic_algorithm
 """
@@ -29,6 +31,7 @@ from config import (
     PYGAD_KEEP_PARENTS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
+    LT_GOMEA_BASELINE_NOISE_STD,
 )
 from src.genetic_algorithm.fitness_evaluation import fitness_function
 from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
@@ -61,46 +64,70 @@ def _on_generation(ga_instance):
     print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Mean: {mean_cost:.2f}")
 
 
-def run_genetic_algorithm():
-    """Run a standard GA on the traffic light baseline and save results."""
-    global _wrapper, _fitness_history
-    _fitness_history = []
+GENE_LOW, GENE_HIGH = 5.0, 85.0
 
-    # ── Load baseline ───────────────────────────────────────────────────
-    with open(BASELINE_TRAFFIC_DATA, "r") as f:
-        baseline_data = json.load(f)
+def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng):
+    """Create initial population: 'random', 'baseline', or 'mixed'."""
+    if strategy == "random":
+        return rng.uniform(GENE_LOW, GENE_HIGH, (n, num_genes))
 
-    _wrapper, num_genes, x_lower, x_upper, labels = build_traffic_fitness_wrapper(
-        baseline_data=baseline_data, fitness_function=fitness_function,
-    )
+    elif strategy == "baseline":
+        pop = np.tile(baseline_vec, (n, 1))
+        pop += rng.normal(0, noise_std, pop.shape) * pop
+        return np.clip(pop, GENE_LOW, GENE_HIGH)
 
-    # Build gene map for JSON reconstruction
+    elif strategy == "mixed":
+        half = n // 2
+        rand = rng.uniform(GENE_LOW, GENE_HIGH, (half, num_genes))
+        base = np.tile(baseline_vec, (n - half, 1))
+        base += rng.normal(0, noise_std, base.shape) * base
+        return np.vstack([rand, np.clip(base, GENE_LOW, GENE_HIGH)])
+
+    raise ValueError(f"Unknown strategy: {strategy}")
+
+
+def build_gene_map(baseline_data):
+    """Builds a gene map and baseline vector for population initialization."""
     tls_to_genes = {}
     idx = 0
+    baseline = []
+
     for tls_id in sorted(baseline_data["tls_data"]):
         phases = sorted(baseline_data["tls_data"][tls_id])
         tls_to_genes[tls_id] = (idx, idx + len(phases))
+        for pk in phases:
+            baseline.append(float(baseline_data["tls_data"][tls_id][pk]["duration"]))
         idx += len(phases)
+
+    return tls_to_genes, idx, np.array(baseline)
+
+
+def run_single_ga(tree_name, strategy, baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
+    """Run a single PyGAD GA optimization experiment."""
+    global _wrapper, _fitness_history
+    _fitness_history = []
+
+    print(f"\n{'='*60}")
+    print(f"PyGAD | Tree (Label): {tree_name} | Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
+    print(f"{'='*60}")
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
-    print(f"Number of genes (phases): {num_genes}")
-    print(f"Population size: {PYGAD_POPULATION_SIZE}")
-    print(f"Generations: {PYGAD_NUM_GENERATIONS}")
-    print(f"Parallel workers: {n_workers}")
-
-    # ── Configure & run ─────────────────────────────────────────────────
-    gene_space = [{"low": float(lo), "high": float(hi)}
-                  for lo, hi in zip(x_lower, x_upper)]
+    # Initialize population using the same logic as LT-GOMEA
+    initial_pop = init_population(strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec, LT_GOMEA_BASELINE_NOISE_STD, rng)
+    
+    gene_space = [{"low": GENE_LOW, "high": GENE_HIGH} for _ in range(num_genes)]
 
     ga_instance = pygad.GA(
         num_generations=PYGAD_NUM_GENERATIONS,
         num_parents_mating=PYGAD_NUM_PARENTS_MATING,
         fitness_func=pygad_fitness_func,
-        sol_per_pop=PYGAD_POPULATION_SIZE,
-        num_genes=num_genes,
+        initial_population=initial_pop.tolist(),
         gene_type=float,
         gene_space=gene_space,
+        parent_selection_type="tournament",
+        K_tournament=2,
+        crossover_type="uniform",
         mutation_percent_genes=PYGAD_MUTATION_PERCENT_GENES,
         keep_parents=PYGAD_KEEP_PARENTS,
         on_generation=_on_generation,
@@ -108,16 +135,13 @@ def run_genetic_algorithm():
         parallel_processing=["process", n_workers],
     )
 
-    print("Starting Genetic Algorithm...")
     t0 = time.time()
     ga_instance.run()
     elapsed = time.time() - t0
-    print(f"GA completed in {elapsed:.2f}s")
 
-    # ── Extract best solution ───────────────────────────────────────────
     solution, solution_fitness, _ = ga_instance.best_solution()
     best_cost = -float(solution_fitness)
-    print(f"Best solution cost: {best_cost:.2f}")
+    print(f"Done in {elapsed:.1f}s | Final best: {best_cost:.2f}")
 
     # Reconstruct the full TLS JSON from the flat gene vector
     best_json = copy.deepcopy(baseline_data)
@@ -144,41 +168,80 @@ def run_genetic_algorithm():
 
     best_json["composite_cost"] = best_cost
 
-    # ── Save results ────────────────────────────────────────────────────
-    root = Path(__file__).resolve().parent.parent.parent
-    out_dir = root / "src" / "outputs"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+    label = f"{tree_name}_{strategy}"
     results = {
         "best_configuration": best_json,
         "best_fitness": best_cost,
         "fitness_history": _fitness_history,
         "time_s": round(elapsed, 2),
         "algorithm": "standard_ga",
+        "tree": tree_name,
+        "strategy": strategy,
         "pop_size": PYGAD_POPULATION_SIZE,
         "generations": PYGAD_NUM_GENERATIONS,
         "mutation_percent_genes": PYGAD_MUTATION_PERCENT_GENES,
         "num_parents_mating": PYGAD_NUM_PARENTS_MATING,
         "keep_parents": PYGAD_KEEP_PARENTS,
+        "parent_selection_type": "tournament",
+        "K_tournament": 2,
+        "crossover_type": "uniform",
         "num_genes": num_genes,
-        "seed": None,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_file = out_dir / "pygad_best_results.json"
+    out_file = out_dir / f"pygad_{label}.json"
     with open(out_file, "w") as f:
         json.dump(results, f, indent=4)
 
-    print(f"Results saved to {out_file}")
+    return best_cost, elapsed
 
-    # ── Summary table ───────────────────────────────────────────────────
-    print(f"\n{'Metric':<25} {'Value':>15}")
-    print("─" * 42)
-    print(f"{'Best fitness':<25} {best_cost:>15.2f}")
-    print(f"{'Generations':<25} {PYGAD_NUM_GENERATIONS:>15}")
-    print(f"{'Population size':<25} {PYGAD_POPULATION_SIZE:>15}")
-    print(f"{'Time (s)':<25} {elapsed:>15.2f}")
+
+def run_all_experiments():
+    """Run all 9 experiments to match LT-GOMEA structure."""
+    global _wrapper
+    
+    with open(BASELINE_TRAFFIC_DATA, "r") as f:
+        baseline_data = json.load(f)
+
+    _wrapper, num_genes, _, _, _ = build_traffic_fitness_wrapper(
+        baseline_data=baseline_data, fitness_function=fitness_function,
+    )
+
+    tls_to_genes, _, baseline_vec = build_gene_map(baseline_data)
+
+    root = Path(__file__).resolve().parent.parent.parent
+    out_dir = root / "src" / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    trees = ["shortest", "euclidian", "fastest"]
+    strategies = ["random", "baseline", "mixed"]
+    summary = {}
+    
+    rng = np.random.default_rng(42)
+
+    for tree_name in trees:
+        for strat in strategies:
+            label = f"{tree_name}_{strat}"
+            try:
+                best_cost, elapsed = run_single_ga(
+                    tree_name, strat, baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng
+                )
+                summary[label] = {"best": best_cost, "time_s": elapsed}
+            except Exception as e:
+                print(f"ERROR [{label}]: {e}")
+                import traceback; traceback.print_exc()
+                summary[label] = {"error": str(e)}
+
+    # Print results table
+    print(f"\n{'Tree Label':<15} {'Strategy':<10} {'Best':>12} {'Time':>8}")
+    print("─" * 47)
+    for label, info in summary.items():
+        t, s = label.rsplit("_", 1)
+        if "error" in info:
+            print(f"{t:<15} {s:<10} {'ERROR':>12}")
+        else:
+            print(f"{t:<15} {s:<10} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
 
 
 if __name__ == "__main__":
-    run_genetic_algorithm()
+    run_all_experiments()
