@@ -278,7 +278,13 @@ def _rebuild_json(sol, baseline, tls_to_genes, pairs):
 
 # ── Experiment runner ──────────────────────────────────────────────────────
 
-def run_all_experiments():
+def run_all_experiments(only_trees=None):
+    """Run paired GOMEA experiments.
+
+    Args:
+        only_trees: optional list of tree names to run (e.g. ["fastest"]).
+                    If None, all trees are run.
+    """
     with open(BASELINE_TRAFFIC_DATA) as f:
         baseline = json.load(f)
 
@@ -296,6 +302,10 @@ def run_all_experiments():
         "euclidian": out_dir / "tls_distances_euclidian.json",
         "fastest":   out_dir / "tls_distances_fastest.json",
     }
+
+    if only_trees:
+        trees = {k: v for k, v in trees.items() if k in only_trees}
+
     summary = {}
 
     for tree_name, path in trees.items():
@@ -332,4 +342,9 @@ def run_all_experiments():
 
 
 if __name__ == "__main__":
-    run_all_experiments()
+    import argparse
+    parser = argparse.ArgumentParser(description="LT-GOMEA Paired Optimizer")
+    parser.add_argument("--tree", nargs="+", choices=["shortest", "euclidian", "fastest"],
+                        help="Run only specific tree(s), e.g. --tree fastest")
+    args = parser.parse_args()
+    run_all_experiments(only_trees=args.tree)
