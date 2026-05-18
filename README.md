@@ -47,7 +47,7 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
     This will run the PyGad Implementation of the Genetic Algorithm.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.pygad_genetic_algorithm
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.simple_genetic_algorithm
     ```
 
 4. **View map statistics**
@@ -108,7 +108,7 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
     Performs random search of n solutions and m evaluations for each solutions.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.random_search
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.random_search
     ```
 
 12. **Execute LT-GOMEA Optimizer**
