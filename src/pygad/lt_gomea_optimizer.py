@@ -43,7 +43,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
     LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
-    LT_GOMEA_BASELINE_NOISE_STD,
+    LT_GOMEA_BASELINE_NOISE_STD, LT_GOMEA_USE_MUTATION,
 )
 from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
 from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
@@ -452,31 +452,34 @@ def run_lt_gomea(
         # A random subset (≈ MUTATION_RATE) of individuals are mutated.
         # Each mutant is evaluated; the mutation is accepted only if fitness
         # improves, preserving the greedy quality of LT-GOMEA.
-        mutant_idxs = [i for i in range(pop_size) if rng.random() < MUTATION_RATE]
         mut_improved = 0
+        mutant_idxs = []
 
-        if mutant_idxs and valid_pairs:
-            mutants = [
-                mutate_pair_cluster(pop[i], valid_pairs, tls_to_genes, rng)
-                for i in mutant_idxs
-            ]
+        if LT_GOMEA_USE_MUTATION:
+            mutant_idxs = [i for i in range(pop_size) if rng.random() < MUTATION_RATE]
 
-            mut_fit_map: dict[int, float] = {}
-            with ProcessPoolExecutor(max_workers=n_workers) as pool:
-                futs = {
-                    pool.submit(_eval, (wrapper, mutants[j], j)): j
-                    for j in range(len(mutant_idxs))
-                }
-                for f in as_completed(futs):
-                    j, v = f.result()
-                    mut_fit_map[j] = v
+            if mutant_idxs and valid_pairs:
+                mutants = [
+                    mutate_pair_cluster(pop[i], valid_pairs, tls_to_genes, rng)
+                    for i in mutant_idxs
+                ]
 
-            for j, i in enumerate(mutant_idxs):
-                new_fit = mut_fit_map[j]
-                if new_fit < fit[i]:          # accept only improvements
-                    pop[i] = mutants[j]
-                    fit[i] = new_fit
-                    mut_improved += 1
+                mut_fit_map: dict[int, float] = {}
+                with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                    futs = {
+                        pool.submit(_eval, (wrapper, mutants[j], j)): j
+                        for j in range(len(mutant_idxs))
+                    }
+                    for f in as_completed(futs):
+                        j, v = f.result()
+                        mut_fit_map[j] = v
+
+                for j, i in enumerate(mutant_idxs):
+                    new_fit = mut_fit_map[j]
+                    if new_fit < fit[i]:          # accept only improvements
+                        pop[i] = mutants[j]
+                        fit[i] = new_fit
+                        mut_improved += 1
 
         # ── Track global best ────────────────────────────────────────────────
         gi = int(np.argmin(fit))

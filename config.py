@@ -35,6 +35,7 @@ OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_tr
 LT_GOMEA_POPULATION_SIZE = 100
 LT_GOMEA_NUM_GENERATIONS = 10
 LT_GOMEA_BASELINE_NOISE_STD = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
+LT_GOMEA_USE_MUTATION = False  # Enable or disable pair-cluster mutation
 
 # Clustering thresholds
 CLUSTER_THRESHOLD_FASTEST = 300
