@@ -583,7 +583,8 @@ def run_all_experiments():
                     LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
                     LT_GOMEA_BASELINE_NOISE_STD, n_workers,
                 )
-                out_file = out_dir / f"lt_gomea_{label}.json"
+                mutation_suffix = "_mutation" if LT_GOMEA_USE_MUTATION else ""
+                out_file = out_dir / f"lt_gomea_{label}{mutation_suffix}.json"
                 with open(out_file, "w") as f:
                     json.dump(res, f, indent=4)
                 print(f"Saved → {out_file}")

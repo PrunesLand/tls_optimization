@@ -189,7 +189,7 @@ def run_single_ga(tree_name, strategy, baseline_data, num_genes, baseline_vec, t
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_file = out_dir / f"pygad_{label}.json"
+    out_file = out_dir / f"simple_ga_{label}.json"
     with open(out_file, "w") as f:
         json.dump(results, f, indent=4)
 
