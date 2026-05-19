@@ -1,5 +1,7 @@
 import os
 
+MAX_EVALS = 1000
+
 # configuration parameters for the genetic algorithm
 POPULATION = 300
 GENERATIONS = 100
@@ -8,9 +10,9 @@ CROSSOVER_RATE = 0.7
 
 # pygad configuration parameters
 PYGAD_POPULATION_SIZE = 100
-PYGAD_NUM_GENERATIONS = 30
-PYGAD_MUTATION_PERCENT_GENES = 10
-PYGAD_NUM_PARENTS_MATING = 2
+PYGAD_NUM_GENERATIONS = MAX_EVALS // PYGAD_POPULATION_SIZE
+PYGAD_MUTATION_PERCENT_GENES = 5
+PYGAD_NUM_PARENTS_MATING = 20
 PYGAD_KEEP_PARENTS = 2
 
 # Parallel processing configuration
@@ -33,7 +35,7 @@ OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_tr
 
 # LT-GOMEA configuration
 LT_GOMEA_POPULATION_SIZE = 100
-LT_GOMEA_NUM_GENERATIONS = 30
+LT_GOMEA_NUM_GENERATIONS = MAX_EVALS // LT_GOMEA_POPULATION_SIZE
 LT_GOMEA_BASELINE_NOISE_STD = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
 LT_GOMEA_USE_MUTATION = False  # Enable or disable pair-cluster mutation
 

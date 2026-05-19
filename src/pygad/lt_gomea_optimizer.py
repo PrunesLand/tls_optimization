@@ -30,6 +30,7 @@ from config import (
     CLUSTER_THRESHOLD_FASTEST,
     CLUSTER_THRESHOLD_SHORTEST,
     CLUSTER_THRESHOLD_EUCLIDIAN,
+    MAX_EVALS,
 )
 import json, copy, time, os, sys
 import numpy as np
@@ -421,8 +422,10 @@ def run_lt_gomea(
     history = [{"gen": 0, "best": float(best_fit), "mean": float(np.mean(fit))}]
 
     # 3. Generational loop ───────────────────────────────────────────────────
-    t0 = time.time()
-    for gen in range(1, num_gen + 1):
+    t0 = time.time() 
+    num_evals = pop_size
+    gen = 1
+    while num_evals < MAX_EVALS: 
 
         # ── Optimal mixing ───────────────────────────────────────────────────
         # Each individual is paired with a random donor; a random mask from the
@@ -445,6 +448,7 @@ def run_lt_gomea(
                 new_sol, new_fit, improved = f.result()
                 pop[idx] = new_sol
                 fit[idx] = new_fit
+                num_evals += 1
                 if improved:
                     mix_improved += 1
 
@@ -455,7 +459,7 @@ def run_lt_gomea(
         mut_improved = 0
         mutant_idxs = []
 
-        if LT_GOMEA_USE_MUTATION:
+        if LT_GOMEA_USE_MUTATION: # select 
             mutant_idxs = [i for i in range(pop_size) if rng.random() < MUTATION_RATE]
 
             if mutant_idxs and valid_pairs:
@@ -476,6 +480,7 @@ def run_lt_gomea(
 
                 for j, i in enumerate(mutant_idxs):
                     new_fit = mut_fit_map[j]
+                    num_evals += 1
                     if new_fit < fit[i]:          # accept only improvements
                         pop[i] = mutants[j]
                         fit[i] = new_fit
@@ -499,6 +504,7 @@ def run_lt_gomea(
             f"Gen {gen:2d} | Best: {best_fit:.2f} | Mean: {np.mean(fit):.2f} "
             f"| Mix+{mix_improved} | Mut+{mut_improved}/{len(mutant_idxs)}"
         )
+        gen += 1
 
     elapsed = time.time() - t0
     print(f"Done in {elapsed:.1f}s | Final best: {best_fit:.2f}")
