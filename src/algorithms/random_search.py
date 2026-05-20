@@ -1,14 +1,3 @@
-"""
-Random Search — evaluates randomly/strategically sampled traffic light configs in parallel.
-
-Generates NUM_SOLUTIONS solutions based on a strategy, evaluates each NUM_REPEATS times,
-and saves the overall best result.
-Runs on 9 scenarios (euclidian, shortest, fastest X random, baseline, mixed)
-to provide a 1:1 comparison base.
-
-Usage:  python -m src.pygad.random_search
-"""
-
 import json, sys, time, os, copy
 from pathlib import Path
 import numpy as np
@@ -17,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, NUM_SOLUTIONS, NUM_REPEATS, GENE_LOW, GENE_HIGH
+    MAX_EVALS, GENE_LOW, GENE_HIGH
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -72,15 +61,14 @@ def build_gene_map(baseline_data):
 def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
     """Run a single Random Search experiment block."""
     print(f"\n{'='*60}")
-    print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {NUM_SOLUTIONS}")
+    print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {MAX_EVALS}")
     print(f"{'='*60}")
 
-    solutions = init_population(strategy, NUM_SOLUTIONS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
+    solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
     
     tasks = []
     for i, solution in enumerate(solutions):
-        for r in range(NUM_REPEATS):
-            tasks.append((wrapper, i, r + 1, solution))
+        tasks.append((wrapper, i, 1, solution))
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
     t_start = time.time()
@@ -140,8 +128,7 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
         "best_fitness": best_fitness,
         "best_solution_index": int(best_sol_idx),
         "total_time_s": round(total_time, 2),
-        "num_solutions": NUM_SOLUTIONS,
-        "num_repeats": NUM_REPEATS,
+        "MAX_EVALS": MAX_EVALS,
         "total_evaluations": len(results),
         "algorithm": "random_search",
         "tree": tree_name,
