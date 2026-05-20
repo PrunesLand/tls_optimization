@@ -29,6 +29,7 @@ from config import (
     PYGAD_MUTATION_PERCENT_GENES,
     PYGAD_NUM_PARENTS_MATING,
     PYGAD_KEEP_PARENTS,
+    MAX_EVALS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
     GAUSSIAN_NOISE,
@@ -42,20 +43,24 @@ from src.sumo_setup.fitness_evaluation import (
 # ── Module-level state (needed for picklable fitness func) ──────────
 _wrapper = None
 _fitness_history = []
+_num_evals = 0
 
 
 def pygad_fitness_func(ga_instance, solution, solution_idx):
     """PyGAD fitness callback — must be module-level for pickling."""
+    global _num_evals
     try:
         cost = float(_wrapper(solution))
+        _num_evals += 1
         return -cost
     except Exception as e:
         print(f"Error evaluating fitness: {e}")
+        _num_evals += 1
         return -9999999.0
 
 
 def _on_generation(ga_instance):
-    """PyGAD generation callback — must be module-level for pickling."""
+    """PyGAD generation callback — stop when evaluation budget is exhausted."""
     gen = ga_instance.generations_completed
     _, solution_fitness, _ = ga_instance.best_solution()
     best_cost = -float(solution_fitness)
@@ -64,7 +69,9 @@ def _on_generation(ga_instance):
     _fitness_history.append({
         "gen": gen, "best": best_cost, "mean": mean_cost,
     })
-    print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Mean: {mean_cost:.2f}")
+    print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Mean: {mean_cost:.2f} | Evals: {_num_evals}")
+    if _num_evals > MAX_EVALS:
+        return "stop"
 
 def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng):
     """Create initial population: 'random', 'baseline', or 'mixed'."""
@@ -104,8 +111,9 @@ def build_gene_map(baseline_data):
 
 def run_single_ga(tree_name, strategy, baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
     """Run a single PyGAD GA optimization experiment."""
-    global _wrapper, _fitness_history
+    global _wrapper, _fitness_history, _num_evals
     _fitness_history = []
+    _num_evals = 0
 
     print(f"\n{'='*60}")
     print(f"PyGAD | Tree (Label): {tree_name} | Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
