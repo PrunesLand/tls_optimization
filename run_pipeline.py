@@ -26,5 +26,5 @@ if __name__ == "__main__":
     run_command("python -m src.pygad.tls_distances_fastest")
     run_command("python -m src.pygad.plot_dendrograms")
     
-    # 12. Execute LT-GOMEA Optimizer
-    run_command("python -m src.pygad.lt_gomea_optimizer")
+    # 12. Execute Custom Optimizer
+    run_command("python -m src.pygad.custom_optimizer")

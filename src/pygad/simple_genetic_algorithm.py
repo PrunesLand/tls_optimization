@@ -4,7 +4,7 @@ Standard Genetic Algorithm using PyGAD for traffic light optimization.
 Optimizes the baseline TLS configuration using a classic GA (selection,
 crossover, mutation) with parallel fitness evaluation via SUMO.
 
-Output format matches lt_gomea_optimizer.py for easy comparison.
+Output format matches custom_optimizer.py for easy comparison.
 Runs on 9 scenarios (euclidian, shortest, fastest X random, baseline, mixed)
 to provide a 1:1 comparison base.
 

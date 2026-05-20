@@ -22,15 +22,29 @@ LT-GOMEA — Linkage Tree Optimal Mixing for traffic light optimization.
    available duration in gene-space.  _rebuild_json normalises both TLS
    to exactly 90 s, preserving the new phase ratios.
 
+3. Tree-walk mutation traverses the Ward linkage tree starting from a
+   randomly selected TLS gene:
+   - If the gene is in a pair cluster (size 2), apply paired mutation.
+   - If the gene is standalone (leaf, not inside any cluster), mutate it.
+   - If the gene is in a cluster of size > 2, enter the cluster and
+     recursively mutate individual genes while skipping pair sub-clusters.
+   Example: cluster (2, [5, [3,4]]) → mutate 2, enter sub-cluster,
+   mutate 5, enter [3,4] which is a pair → skip both.
+   But if gene 3 was selected, its smallest cluster is [3,4] (pair) →
+   apply paired mutation on (3,4).
+
 9 experiments: 3 linkage trees × 3 population strategies.
 
-Usage:  python -m src.pygad.lt_gomea_optimizer
+Usage:  python -m src.pygad.custom_optimizer
 """
 from config import (
     CLUSTER_THRESHOLD_FASTEST,
     CLUSTER_THRESHOLD_SHORTEST,
     CLUSTER_THRESHOLD_EUCLIDIAN,
-    MAX_EVALS,
+    MAX_EVALS, BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
+    LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
+    LT_GOMEA_BASELINE_NOISE_STD, LT_GOMEA_USE_MUTATION,
+    LT_GOMEA_GENE_LOW, LT_GOMEA_GENE_HIGH, LT_GOMEA_MUTATION_RATE,
 )
 import json, copy, time, os, sys
 import numpy as np
@@ -41,11 +55,6 @@ from scipy.spatial.distance import squareform
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from config import (
-    BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
-    LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
-    LT_GOMEA_BASELINE_NOISE_STD, LT_GOMEA_USE_MUTATION,
-)
 from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
 from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
 
@@ -55,8 +64,8 @@ THRESHOLDS = {
     "fastest":   CLUSTER_THRESHOLD_FASTEST,
 }
 
-GENE_LOW, GENE_HIGH   = 5.0, 85.0
-MUTATION_RATE         = 0.15   # fraction of individuals mutated per generation
+GENE_LOW, GENE_HIGH   = LT_GOMEA_GENE_LOW, LT_GOMEA_GENE_HIGH
+MUTATION_RATE         = LT_GOMEA_MUTATION_RATE   # fraction of individuals mutated per generation
 
 
 # ── Distance matrix helpers ──────────────────────────────────────────────────
@@ -89,9 +98,9 @@ def _load_distance_array(distance_json: str):
 def build_all_tree_masks(
     distance_json: str,
     threshold: float,
-) -> tuple[list[list[str]], list[tuple[str, str]]]:
+) -> tuple[list[list[str]], list[tuple[str, str]], dict]:
     """
-    Build a Ward linkage tree and return two collections.
+    Build a Ward linkage tree and return three collections.
 
     mixing_masks
         Every internal node whose merge distance ≤ *threshold*, excluding the
@@ -103,6 +112,21 @@ def build_all_tree_masks(
         the *entire* tree with no threshold restriction.  These feed the
         pair-cluster mutation regardless of where they sit in the hierarchy.
 
+    tree_structure
+        Full hierarchical representation of the Ward linkage tree.  Each
+        internal node is stored as::
+
+            node_id: {
+                "members":  [tls_id, ...],   # all leaf TLS IDs under this node
+                "left":     int,              # left child node id
+                "right":    int,              # right child node id
+                "size":     int,              # number of leaves
+            }
+
+        Leaf nodes (id < n) have a single-entry ``members`` list and no
+        children.  This structure enables the tree-walk mutation to
+        descend the hierarchy.
+
     Parameters
     ----------
     distance_json : path to a distance/travel-time JSON file
@@ -110,8 +134,9 @@ def build_all_tree_masks(
 
     Returns
     -------
-    mixing_masks  : list[list[str]]         — TLS-ID groups for mixing
-    pair_clusters : list[tuple[str, str]]   — 2-TLS pairs for mutation
+    mixing_masks   : list[list[str]]         — TLS-ID groups for mixing
+    pair_clusters  : list[tuple[str, str]]   — 2-TLS pairs for mutation
+    tree_structure : dict                    — full Ward tree (for tree-walk mutation)
     """
     arr, tls_ids = _load_distance_array(distance_json)
     n = len(tls_ids)
@@ -127,10 +152,31 @@ def build_all_tree_masks(
     mixing_masks:  list[list[str]]        = []
     pair_clusters: list[tuple[str, str]]  = []
 
+    # ── Build full tree structure for tree-walk mutation ──────────────────
+    tree_structure: dict = {}
+
+    # Register every leaf node
+    for i in range(n):
+        tree_structure[i] = {
+            "members": [tls_ids[i]],
+            "left":    None,
+            "right":   None,
+            "size":    1,
+        }
+
     for i, row in enumerate(Z):
         node_id    = n + i
+        left, right = int(row[0]), int(row[1])
         merge_dist = float(row[2])
         tls_group  = [tls_ids[m] for m in members[node_id]]
+
+        # Register this internal node in the tree structure
+        tree_structure[node_id] = {
+            "members": tls_group,
+            "left":    left,
+            "right":   right,
+            "size":    len(tls_group),
+        }
 
         # ── Pair clusters: collect from whole tree (no threshold gate) ──
         if len(tls_group) == 2:
@@ -146,7 +192,12 @@ def build_all_tree_masks(
 
         mixing_masks.append(tls_group)
 
-    return mixing_masks, pair_clusters
+    # Store root_id and tls_id → leaf_node_id mapping for lookups
+    tls_to_node: dict[str, int] = {tls_ids[i]: i for i in range(n)}
+    tree_structure["__root__"]      = root_id
+    tree_structure["__tls_to_node__"] = tls_to_node
+
+    return mixing_masks, pair_clusters, tree_structure
 
 
 # ── Gene mapping ─────────────────────────────────────────────────────────────
@@ -362,9 +413,202 @@ def mutate_pair_cluster(
     return new_sol
 
 
+# ── Tree-walk mutation ───────────────────────────────────────────────────────
+
+def _find_containing_node(
+    tls_id: str,
+    tree_structure: dict,
+) -> int | None:
+    """
+    Find the smallest internal node (cluster) that contains *tls_id*.
+
+    Walks upward from the leaf to find the first internal node (size ≥ 2)
+    that contains this TLS.  Returns the node_id, or None if the TLS is
+    only found as a leaf (i.e. it was never merged into any cluster, which
+    shouldn't happen in a complete Ward tree but is handled defensively).
+    """
+    tls_to_node = tree_structure.get("__tls_to_node__", {})
+    if tls_id not in tls_to_node:
+        return None
+
+    root_id = tree_structure["__root__"]
+    leaf_id = tls_to_node[tls_id]
+
+    # Walk every internal node and find the smallest one containing this leaf.
+    # Internal nodes have size ≥ 2.
+    best_node = None
+    best_size = float("inf")
+
+    for node_id, info in tree_structure.items():
+        if isinstance(node_id, str):           # skip metadata keys
+            continue
+        if info["size"] < 2:                   # skip leaves
+            continue
+        if tls_id in info["members"] and info["size"] < best_size:
+            best_node = node_id
+            best_size = info["size"]
+
+    return best_node
+
+
+def _collect_tree_walk_genes(
+    node_id: int,
+    tree_structure: dict,
+    tls_to_genes: dict[str, tuple[int, int]],
+    rng: np.random.Generator,
+) -> list[str]:
+    """
+    Recursively walk a sub-tree rooted at *node_id* and collect TLS IDs
+    that should be mutated, following the tree-walk mutation rules.
+
+    Rules applied at each internal node:
+    - If the node is a pair cluster (size == 2): skip it entirely (return []).
+    - If the node has size > 2: examine its two children.
+      - A child that is a leaf (single TLS): mutate it.
+      - A child that is a pair cluster (size == 2): skip it (paired mutation
+        territory).
+      - A child that is a larger cluster (size > 2): recurse into it.
+
+    Returns
+    -------
+    tls_ids_to_mutate : list[str]  — TLS IDs whose genes should be randomised
+    """
+    node = tree_structure.get(node_id)
+    if node is None:
+        return []
+
+    # Leaf node — this TLS is an individual gene, collect it for mutation
+    if node["size"] == 1:
+        tls_id = node["members"][0]
+        if tls_id in tls_to_genes:
+            return [tls_id]
+        return []
+
+    # Pair cluster (size == 2) — skip entirely
+    if node["size"] == 2:
+        return []
+
+    # Cluster with size > 2 — descend into children
+    to_mutate: list[str] = []
+    for child_id in (node["left"], node["right"]):
+        if child_id is None:
+            continue
+        child = tree_structure.get(child_id)
+        if child is None:
+            continue
+
+        if child["size"] == 1:
+            # Individual gene — mutate it
+            tls_id = child["members"][0]
+            if tls_id in tls_to_genes:
+                to_mutate.append(tls_id)
+        elif child["size"] == 2:
+            # Pair sub-cluster — skip (leave for paired mutation)
+            continue
+        else:
+            # Larger sub-cluster — recurse
+            to_mutate.extend(
+                _collect_tree_walk_genes(child_id, tree_structure,
+                                        tls_to_genes, rng)
+            )
+
+    return to_mutate
+
+
+def mutate_tree_walk(
+    sol: np.ndarray,
+    tree_structure: dict,
+    tls_to_genes: dict[str, tuple[int, int]],
+    pair_clusters: list[tuple[str, str]],
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """
+    Tree-walk mutation — structure-aware single-gene mutation.
+
+    Algorithm
+    ---------
+    1. Randomly select a TLS gene from the gene map.
+    2. Find the smallest cluster in the Ward tree that contains this TLS.
+    3. Apply the tree-walk rules:
+       a. If that cluster is a pair (size 2): apply **paired mutation** on
+          that specific pair via ``mutate_pair_cluster``.
+       b. If the TLS is not part of any cluster (standalone leaf): mutate
+          just that TLS.
+       c. If the cluster has size > 2: enter it and recursively collect
+          individual TLS genes to mutate.  The initially selected TLS is
+          always included if it is a direct leaf child.  Pair sub-clusters
+          encountered during traversal are skipped.
+    4. Each collected TLS has its phase-duration genes re-sampled uniformly
+       from [GENE_LOW, GENE_HIGH].
+
+    Example
+    -------
+    Cluster structure:  (2, [5, [3, 4]])
+    - Enter root cluster (size 3): children are leaf 2 and sub-cluster [5,[3,4]].
+    - Leaf 2 → mutate.
+    - Sub-cluster [5,[3,4]] (size 3): children are leaf 5 and pair [3,4].
+      - Leaf 5 → mutate.
+      - Pair [3,4] → skip.
+    - Result: genes for TLS 2 and TLS 5 are re-sampled.
+
+    If gene 3 had been selected initially instead, its smallest cluster is
+    the pair [3,4], so paired mutation is applied to (3,4).
+
+    Parameters
+    ----------
+    sol            : current solution vector (not modified)
+    tree_structure : full Ward tree dict from build_all_tree_masks
+    tls_to_genes   : maps tls_id → (start_idx, end_idx) in the gene vector
+    pair_clusters  : list of (tls_a, tls_b) pairs for paired mutation
+    rng            : numpy random Generator
+
+    Returns
+    -------
+    new_sol : np.ndarray — mutated copy
+    """
+    all_tls = [t for t in tls_to_genes if t in
+               tree_structure.get("__tls_to_node__", {})]
+    if not all_tls:
+        return sol.copy()
+
+    # ── Step 1: randomly select a TLS gene ───────────────────────────────
+    selected_tls = all_tls[int(rng.integers(0, len(all_tls)))]
+
+    # ── Step 2: find the smallest containing cluster ─────────────────────
+    containing_node = _find_containing_node(selected_tls, tree_structure)
+
+    new_sol = sol.copy()
+
+    if containing_node is None:
+        # TLS is not part of any cluster — mutate it directly
+        s, e = tls_to_genes[selected_tls]
+        new_sol[s:e] = rng.uniform(GENE_LOW, GENE_HIGH, e - s)
+        return new_sol
+
+    containing_info = tree_structure[containing_node]
+
+    # ── Step 3a: smallest cluster is a pair → apply paired mutation ──────
+    if containing_info["size"] == 2:
+        pair = (containing_info["members"][0], containing_info["members"][1])
+        return mutate_pair_cluster(sol, [pair], tls_to_genes, rng)
+
+    # ── Step 3c: cluster size > 2 → tree-walk to collect genes ───────────
+    tls_to_mutate = _collect_tree_walk_genes(
+        containing_node, tree_structure, tls_to_genes, rng
+    )
+
+    # ── Step 4: mutate collected genes ───────────────────────────────────
+    for tls_id in tls_to_mutate:
+        if tls_id in tls_to_genes:
+            s, e = tls_to_genes[tls_id]
+            new_sol[s:e] = rng.uniform(GENE_LOW, GENE_HIGH, e - s)
+
+    return new_sol
+
+
 # ── Core GOMEA loop ──────────────────────────────────────────────────────────
 
-def run_lt_gomea(
+def run_custom_optimizer(
     tree_name: str,
     dist_path: str,
     strategy: str,
@@ -379,7 +623,7 @@ def run_lt_gomea(
     n_workers: int,
     seed: int = 42,
 ) -> dict:
-    """Run one LT-GOMEA experiment. Returns a results dict."""
+    """Run one custom optimization experiment. Returns a results dict."""
     rng       = np.random.default_rng(seed)
     threshold = THRESHOLDS[tree_name]
 
@@ -391,7 +635,9 @@ def run_lt_gomea(
     #    mixing_masks : all sub-threshold Ward clusters (parent + children),
     #                   root excluded, singletons excluded.
     #    pair_clusters: all 2-TLS nodes in the full tree (for mutation).
-    tls_masks, pair_clusters = build_all_tree_masks(dist_path, threshold)
+    tls_masks, pair_clusters, tree_structure = build_all_tree_masks(
+        dist_path, threshold
+    )
 
     # Convert TLS-ID masks → gene-index masks; require ≥ 2 gene indices
     gene_masks = [mask_to_gene_indices(m, tls_to_genes) for m in tls_masks]
@@ -405,6 +651,11 @@ def run_lt_gomea(
     print(f"Mixing masks : {len(gene_masks)} clusters "
           f"(gene-group sizes: {cluster_sizes})")
     print(f"Pair-mutation: {len(valid_pairs)} 2-TLS pairs available")
+    n_walk_clusters = sum(
+        1 for k, v in tree_structure.items()
+        if not isinstance(k, str) and v["size"] > 2
+    )
+    print(f"Tree-walk   : {n_walk_clusters} clusters with size > 2")
 
     if not gene_masks:
         raise RuntimeError(
@@ -452,19 +703,27 @@ def run_lt_gomea(
                 if improved:
                     mix_improved += 1
 
-        # ── Pair-cluster mutation ────────────────────────────────────────────
+        # ── Mutation ──────────────────────────────────────────────────────────
         # A random subset (≈ MUTATION_RATE) of individuals are mutated.
+        # Each mutant randomly selects a TLS gene; the mutation method is
+        # determined by that gene's position in the Ward tree:
+        #   - smallest cluster is a pair (size 2) → paired mutation
+        #   - smallest cluster has size > 2       → tree-walk mutation
+        #   - standalone gene (no cluster)        → direct re-sampling
         # Each mutant is evaluated; the mutation is accepted only if fitness
         # improves, preserving the greedy quality of LT-GOMEA.
         mut_improved = 0
         mutant_idxs = []
 
-        if LT_GOMEA_USE_MUTATION: # select 
+        if LT_GOMEA_USE_MUTATION: 
             mutant_idxs = [i for i in range(pop_size) if rng.random() < MUTATION_RATE]
 
-            if mutant_idxs and valid_pairs:
+            if mutant_idxs:
                 mutants = [
-                    mutate_pair_cluster(pop[i], valid_pairs, tls_to_genes, rng)
+                    mutate_tree_walk(
+                        pop[i], tree_structure, tls_to_genes,
+                        valid_pairs, rng
+                    )
                     for i in mutant_idxs
                 ]
 
@@ -583,14 +842,14 @@ def run_all_experiments():
         for strat in strategies:
             label = f"{tree_name}_{strat}"
             try:
-                res = run_lt_gomea(
+                res = run_custom_optimizer(
                     tree_name, str(path), strat, baseline,
                     wrapper, num_genes, baseline_vec, tls_to_genes,
                     LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
                     LT_GOMEA_BASELINE_NOISE_STD, n_workers,
                 )
                 mutation_suffix = "_mutation" if LT_GOMEA_USE_MUTATION else ""
-                out_file = out_dir / f"lt_gomea_{label}{mutation_suffix}.json"
+                out_file = out_dir / f"custom_optimizer_{label}{mutation_suffix}.json"
                 with open(out_file, "w") as f:
                     json.dump(res, f, indent=4)
                 print(f"Saved → {out_file}")
