@@ -24,7 +24,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     This will run the PyGad Implementation of the Genetic Algorithm.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.simple_genetic_algorithm
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.simple_genetic_algorithm
     ```
 
 4. **View map statistics**
@@ -85,7 +85,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     Performs random search of n solutions and m evaluations for each solutions.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.random_search
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.random_search
     ```
 
 12. **Execute Custom Optimizer**
@@ -95,8 +95,6 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.custom_optimizer
     ```
-
-
 
 13. **Generate Distance Matrices**
 
@@ -129,7 +127,15 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     Evaluates the current configuration of the instance map.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.baseline_evaluator
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.evaluate_baseline
+    ```
+
+17. **Run LT-GA with PyGad**
+
+    This will run the PyGad Implementation of the custom LT - Genetic Algorithm.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.lt_genetic_algorithm
     ```
 
 
