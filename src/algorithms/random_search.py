@@ -19,8 +19,10 @@ from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, LT_GOMEA_BASELINE_NOISE_STD,
     MAX_EVALS, NUM_SOLUTIONS, NUM_REPEATS, GENE_LOW, GENE_HIGH
 )
-from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
-from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
+from src.sumo_setup.fitness_evaluation import (
+    fitness_function as _traffic_fitness,
+    build_traffic_fitness_wrapper,
+)
 
 def _eval_worker(args):
     """Picklable worker for parallel execution."""

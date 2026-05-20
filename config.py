@@ -38,7 +38,15 @@ CLUSTER_THRESHOLD_FASTEST = 300
 CLUSTER_THRESHOLD_SHORTEST = 4000
 CLUSTER_THRESHOLD_EUCLIDIAN = 3500
 
-# LT-GOMEA Bounds and Mutation
+# Custom Optimizer  Bounds and Mutation
 GENE_LOW = 24.0
 GENE_HIGH = 82.0
 MUTATION_RATE = 0.15
+
+CYCLE_LENGTH = 90
+
+PHASE_BOUNDS = {
+    "green":  (24, 82),
+    "yellow": ( 3,  6),
+    "red":    ( 5, 63),
+}

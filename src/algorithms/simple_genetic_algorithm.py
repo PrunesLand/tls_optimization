@@ -33,8 +33,10 @@ from config import (
     LT_GOMEA_BASELINE_NOISE_STD,
     GENE_LOW, GENE_HIGH,
 )
-from src.genetic_algorithm.fitness_evaluation import fitness_function
-from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
+from src.sumo_setup.fitness_evaluation import (
+    fitness_function,
+    build_traffic_fitness_wrapper,
+)
 
 # ── Module-level state (needed for picklable fitness func) ──────────
 _wrapper = None

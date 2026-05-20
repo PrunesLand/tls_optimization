@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 # Import specific variables from your config
 from config import BASELINE_TRAFFIC_DATA, NUM_PROCESSORS
-from src.genetic_algorithm.fitness_evaluation import fitness_function
+from src.sumo_setup.fitness_evaluation import fitness_function
 
 # Load Baseline Data
 with open(BASELINE_TRAFFIC_DATA, 'r') as f:

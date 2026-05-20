@@ -24,8 +24,10 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import BASELINE_TRAFFIC_DATA, NUM_PROCESSORS
-from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
-from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
+from src.sumo_setup.fitness_evaluation import (
+    fitness_function as _traffic_fitness,
+    build_traffic_fitness_wrapper,
+)
 
 # ---------------------------------------------------------------------------
 # CONFIG

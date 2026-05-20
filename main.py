@@ -1,6 +1,6 @@
 from config import *
-from src.genetic_algorithm.fitness_evaluation import evaluate_population
-from src.genetic_algorithm.initialization import generate_population
+from src.sumo_setup.fitness_evaluation import evaluate_population
+from src.sumo_setup.fitness_evaluation import fitness_function
 
 # def genetic_algorithm():
 #     population = []

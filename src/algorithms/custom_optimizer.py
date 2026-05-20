@@ -1,5 +1,5 @@
 """
-LT-GOMEA — Linkage Tree Optimal Mixing for traffic light optimization.
+Custom Optimier — Linkage Tree Optimal Mixing for traffic light optimization.
 
 1. Optimal-mixing masks now include EVERY internal Ward node whose merge
    distance ≤ threshold (not just the top-level fcluster partition).
@@ -55,8 +55,10 @@ from scipy.spatial.distance import squareform
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
-from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
+from src.sumo_setup.fitness_evaluation import (
+    fitness_function as _traffic_fitness,
+    build_traffic_fitness_wrapper,
+)
 
 THRESHOLDS = {
     "shortest":  CLUSTER_THRESHOLD_SHORTEST,

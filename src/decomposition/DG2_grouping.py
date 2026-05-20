@@ -18,24 +18,6 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 MACHINE_EPSILON = np.finfo(float).eps
 GAMMA2 = 2 * MACHINE_EPSILON / (1 - 2 * MACHINE_EPSILON)
 
-CYCLE_LENGTH = 90
-
-PHASE_BOUNDS = {
-    "green":  (24, 85),
-    "yellow": ( 3,  6),
-    "red":    ( 5, 85),
-}
-
-
-def _phase_type(state: str) -> str:
-    """Infer phase type (green/yellow/red) from SUMO state string."""
-    s = state.lower()
-    counts = {"green": s.count("g"), "yellow": s.count("y"), "red": s.count("r")}
-    for ptype in ("green", "yellow", "red"):
-        if counts[ptype] == max(counts.values()):
-            return ptype
-    return "red"
-
 
 def _eval_probe(args):
     """Worker function for parallel evaluation. Must be module-level for pickling."""
@@ -218,87 +200,15 @@ def run_dg2(f, n, x_lower, x_upper, gene_labels=None,
 
 
 # ---------------------------------------------------------------------------
-# Traffic-light fitness wrapper (picklable for multiprocessing)
-# ---------------------------------------------------------------------------
-
-class TrafficFitnessWrapper:
-    """Converts a gene vector into per-TLS durations and calls the SUMO fitness function."""
-
-    def __init__(self, fitness_function, tls_mapping):
-        self.fitness_function = fitness_function
-        self.tls_mapping = tls_mapping
-
-    def __call__(self, vector: np.ndarray) -> float:
-        tls_durations = {}
-
-        for tls in self.tls_mapping:
-            tls_id = tls["tls_id"]
-            phase_types = tls["phase_types"]
-            raw = list(vector[tls["start_idx"]: tls["end_idx"]])
-
-            # Clamp each gene to its per-type bounds
-            durations = []
-            for raw_val, ptype in zip(raw, phase_types):
-                lo, hi = PHASE_BOUNDS[ptype]
-                durations.append(int(round(max(lo, min(hi, raw_val)))))
-
-            # Adjust for 90s cycle length (only green/red absorb remainder)
-            remainder = CYCLE_LENGTH - sum(durations)
-            if remainder != 0:
-                adjustable = [i for i, pt in enumerate(phase_types) if pt in ("green", "red")]
-                if adjustable:
-                    target_idx = min(adjustable, key=lambda i: durations[i])
-                    durations[target_idx] += remainder
-
-                    lo, _ = PHASE_BOUNDS[phase_types[target_idx]]
-                    if durations[target_idx] < lo:
-                        durations[target_idx] = lo
-                        fallback = max(adjustable, key=lambda i: durations[i])
-                        durations[fallback] += CYCLE_LENGTH - sum(durations)
-
-            tls_durations[tls_id] = durations
-
-        return self.fitness_function(tls_durations)
-
-
-def build_traffic_fitness_wrapper(baseline_data, fitness_function):
-    """Build a picklable fitness wrapper from baseline data. Returns (wrapper, n, lb, ub, labels)."""
-    tls_mapping = []
-    gene_idx = 0
-    x_lower_list, x_upper_list, labels = [], [], []
-
-    for tls_id in sorted(baseline_data["tls_data"].keys()):
-        phase_keys = sorted(baseline_data["tls_data"][tls_id].keys())
-        phase_types = []
-
-        for pk in phase_keys:
-            state = baseline_data["tls_data"][tls_id][pk].get("state", "")
-            ptype = _phase_type(state)
-            phase_types.append(ptype)
-
-            lo, hi = PHASE_BOUNDS[ptype]
-            x_lower_list.append(float(lo))
-            x_upper_list.append(float(hi))
-            labels.append(f"{tls_id}_{pk}")
-
-        tls_mapping.append({
-            "tls_id": tls_id, "num_phases": len(phase_keys),
-            "phase_types": phase_types,
-            "start_idx": gene_idx, "end_idx": gene_idx + len(phase_keys),
-        })
-        gene_idx += len(phase_keys)
-
-    f = TrafficFitnessWrapper(fitness_function, tls_mapping)
-    return f, gene_idx, np.array(x_lower_list), np.array(x_upper_list), labels
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     from config import BASELINE_TRAFFIC_DATA
-    from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
+    from src.sumo_setup.fitness_evaluation import (
+        fitness_function as _traffic_fitness,
+        build_traffic_fitness_wrapper,
+    )
 
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
