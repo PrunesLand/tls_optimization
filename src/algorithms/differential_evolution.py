@@ -1,7 +1,8 @@
 """
-Differential Evolution using SciPy for traffic light optimization.
+Differential Evolution (SHADE) using EvoX for traffic light optimization.
 
-Optimizes the baseline TLS configuration using scipy.optimize.differential_evolution
+Optimizes the baseline TLS configuration using the SHADE (Success-History
+based Adaptive Differential Evolution) algorithm from the EvoX library
 with parallel fitness evaluation via SUMO.
 
 Runs 3 experiments: random, baseline, and mixed initialization strategies.
@@ -17,7 +18,12 @@ import time
 import os
 import sys
 from pathlib import Path
-from scipy.optimize import differential_evolution
+from multiprocessing import Pool
+
+import torch
+from evox.algorithms import SHADE
+from evox.workflows import StdWorkflow, EvalMonitor
+from evox.core import Problem
 
 # Add project root to sys.path to import config and other modules
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -37,17 +43,14 @@ from src.sumo_setup.fitness_evaluation import (
 
 # ── Module-level state ──────────────────────────────────────────────
 _wrapper = None
-_fitness_history = []
 _num_evals = 0
-_best_cost = float("inf")
-_gen_costs = []
 
 
-def _objective(x):
-    """Objective function for scipy DE — minimises cost."""
+def _evaluate_single(vec):
+    """Evaluate a single solution vector (module-level for pickling)."""
     global _num_evals
     try:
-        cost = float(_wrapper(x))
+        cost = float(_wrapper(vec))
         _num_evals += 1
         return cost
     except Exception as e:
@@ -56,27 +59,42 @@ def _objective(x):
         return 9999999.0
 
 
-def _de_callback(xk, convergence):
+# ── Custom EvoX Problem wrapping the SUMO fitness function ─────────
+
+class TLSProblem(Problem):
+    """EvoX-compatible problem that evaluates TLS solutions via SUMO.
+
+    Converts the PyTorch population tensor to NumPy, rounds to whole
+    numbers, evaluates each individual through the SUMO wrapper (optionally
+    in parallel), and returns a fitness tensor.
     """
-    Called once per generation by scipy DE.
-    Logs progress and stops early when the evaluation budget is exhausted.
-    """
-    global _best_cost
-    gen = len(_fitness_history) + 1
-    cost = float(_wrapper(xk))
-    _num_evals  # don't increment — xk was already evaluated internally
-    if cost < _best_cost:
-        _best_cost = cost
-    _fitness_history.append({
-        "gen": gen, "best": _best_cost, "convergence": float(convergence),
-    })
-    print(
-        f"Gen {gen:3d} | Best: {_best_cost:.2f} | "
-        f"Convergence: {convergence:.4f} | Evals: {_num_evals}"
-    )
-    if _num_evals > MAX_EVALS:
-        return True  # signal scipy to stop
-    return False
+
+    def __init__(self, wrapper, n_workers=1):
+        super().__init__()
+        self.wrapper = wrapper
+        self.n_workers = n_workers
+
+    def evaluate(self, pop: torch.Tensor) -> torch.Tensor:
+        """Evaluate the entire population.
+
+        Args:
+            pop: Tensor of shape (pop_size, dim).
+
+        Returns:
+            Tensor of shape (pop_size,) with fitness values (costs).
+        """
+        global _num_evals
+
+        # Round to whole numbers and convert to numpy
+        pop_np = torch.round(pop).cpu().numpy()
+
+        if self.n_workers > 1:
+            with Pool(processes=self.n_workers) as pool:
+                costs = pool.map(_evaluate_single, [row for row in pop_np])
+        else:
+            costs = [_evaluate_single(row) for row in pop_np]
+
+        return torch.tensor(costs, dtype=pop.dtype, device=pop.device)
 
 
 # ── Population initialisation strategies ────────────────────────────
@@ -129,57 +147,89 @@ def build_gene_map(baseline_data):
     return tls_to_genes, idx, np.array(baseline)
 
 
-# ── Single DE run ───────────────────────────────────────────────────
+# ── Single DE-SHADE run ─────────────────────────────────────────────
 
 def run_single_de(strategy, baseline_data, num_genes, baseline_vec,
                   tls_to_genes, bounds_lo, bounds_hi, out_dir, rng):
-    """Run a single scipy.optimize.differential_evolution experiment."""
-    global _wrapper, _fitness_history, _num_evals, _best_cost
+    """Run a single EvoX SHADE experiment with the given initialisation strategy."""
+    global _wrapper, _num_evals
 
-    _fitness_history = []
     _num_evals = 0
-    _best_cost = float("inf")
+    fitness_history = []
 
     print(f"\n{'='*60}")
-    print(f"Differential Evolution | Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
+    print(f"SHADE (EvoX) | Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
     print(f"{'='*60}")
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
-    # Per-gene bounds as a list of (lo, hi) tuples
-    bounds = list(zip(bounds_lo.tolist(), bounds_hi.tolist()))
-
-    # Build initial population
-    initial_pop = init_population(
+    # Build initial population using our strategy
+    initial_pop_np = init_population(
         strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec,
         GAUSSIAN_NOISE, bounds_lo, bounds_hi, rng,
     )
 
-    # Mark every variable as integer (whole numbers)
-    integrality = np.ones(num_genes)
+    # Convert bounds and initial population to PyTorch tensors
+    lb = torch.tensor(bounds_lo, dtype=torch.float64)
+    ub = torch.tensor(bounds_hi, dtype=torch.float64)
+
+    # Initialise SHADE algorithm
+    algorithm = SHADE(
+        pop_size=PYGAD_POPULATION_SIZE,
+        lb=lb,
+        ub=ub,
+    )
+
+    # Create the custom problem and monitor
+    problem = TLSProblem(wrapper=_wrapper, n_workers=n_workers)
+    monitor = EvalMonitor(full_fit_history=True, topk=1)
+
+    # Assemble the standard workflow
+    workflow = StdWorkflow(
+        algorithm=algorithm,
+        problem=problem,
+        monitor=monitor,
+    )
+
+    # Inject our custom initial population into the algorithm's internal buffer
+    workflow.init_step()
+    init_pop_tensor = torch.tensor(initial_pop_np, dtype=torch.float64)
+    algorithm.pop.data.copy_(init_pop_tensor)
 
     t0 = time.time()
-    result = differential_evolution(
-        func=_objective,
-        bounds=bounds,
-        maxiter=MAX_EVALS,              # generous upper limit on generations
-        maxfev=MAX_EVALS,               # hard cap on total function evaluations
-        popsize=PYGAD_POPULATION_SIZE,   # absolute population size via init kwarg
-        strategy="best1bin",
-        mutation=(0.5, 1.0),             # dithered mutation factor F ∈ [0.5, 1.0]
-        recombination=0.7,
-        tol=0,                           # don't stop on convergence tolerance
-        seed=rng,
-        callback=_de_callback,
-        init=initial_pop,                # custom initial population
-        workers=n_workers,
-        updating="deferred",            # required when workers > 1
-        integrality=integrality,         # constrain variables to whole numbers
-    )
+    gen = 0
+
+    # Run generation-by-generation to enforce MAX_EVALS and log progress
+    while _num_evals < MAX_EVALS:
+        workflow.step()
+        gen += 1
+
+        # Retrieve best fitness so far from the monitor
+        best_fitness = monitor.get_best_fitness()
+        if best_fitness is not None:
+            best_cost = float(best_fitness.item())
+        else:
+            best_cost = float("inf")
+
+        fitness_history.append({
+            "gen": gen, "best": best_cost, "evals": _num_evals,
+        })
+        print(
+            f"Gen {gen:3d} | Best: {best_cost:.2f} | Evals: {_num_evals}"
+        )
+
     elapsed = time.time() - t0
 
-    best_vec = result.x
-    best_cost = float(result.fun)
+    # Retrieve the final best solution
+    best_solution = monitor.get_best_solution()
+    if best_solution is not None:
+        best_vec = torch.round(best_solution).cpu().numpy()
+    else:
+        best_vec = initial_pop_np[0]
+
+    best_fitness_final = monitor.get_best_fitness()
+    best_cost = float(best_fitness_final.item()) if best_fitness_final is not None else float("inf")
+
     print(f"Done in {elapsed:.1f}s | Final best: {best_cost:.2f} | Evals: {_num_evals}")
 
     # Reconstruct the full TLS JSON from the flat gene vector
@@ -210,21 +260,15 @@ def run_single_de(strategy, baseline_data, num_genes, baseline_vec,
     results = {
         "best_configuration": best_json,
         "best_fitness": best_cost,
-        "fitness_history": _fitness_history,
+        "fitness_history": fitness_history,
         "time_s": round(elapsed, 2),
-        "algorithm": "differential_evolution",
+        "algorithm": "shade_evox",
         "strategy": strategy,
         "pop_size": PYGAD_POPULATION_SIZE,
-        "de_strategy": "best1bin",
-        "mutation_range": [0.5, 1.0],
-        "recombination": 0.7,
         "integrality": True,
         "num_genes": num_genes,
         "total_evals": _num_evals,
-        "scipy_message": result.message,
-        "scipy_success": result.success,
-        "scipy_nit": int(result.nit),
-        "scipy_nfev": int(result.nfev),
+        "generations_completed": gen,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
@@ -239,7 +283,7 @@ def run_single_de(strategy, baseline_data, num_genes, baseline_vec,
 # ── Run all 3 experiments ───────────────────────────────────────────
 
 def run_all_experiments():
-    """Run 3 DE experiments: random, baseline, and mixed initialisation."""
+    """Run 3 SHADE experiments: random, baseline, and mixed initialisation."""
     global _wrapper
 
     with open(BASELINE_TRAFFIC_DATA, "r") as f:
