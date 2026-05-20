@@ -2,29 +2,6 @@
 
 This is my take on optimizing traffic light controls as a discrete type problem with genetic algorithms.
 
-## Optimization process
-
-
-
-## Quick Start Pipeline (Rental Machine Setup)
-
-If you need to quickly run the full setup and LT-GOMEA optimization pipeline (Steps 1, 5, 6, 13, and 12), you can use the automated bash script provided in the root directory:
-
-**Using the Bash Script:**
-```bash
-./run_pipeline.sh
-```
-
-**Using the Python Script:**
-```bash
-python run_pipeline.py
-```
-
-**Using a Single Docker One-Liner (if you prefer no external scripts):**
-```bash
-docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization bash -c "python -m src.sumo_setup.generation && cd src/sumo_setup && netconvert -c osm.netccfg && cd /app && python -m src.pygad.tls_distances_shortest && python -m src.pygad.tls_distances_euclidian && python -m src.pygad.tls_distances_fastest && python -m src.pygad.plot_dendrograms && python -m src.pygad.lt_gomea_optimizer"
-```
-
 ## How to run
 
 1. **Building with Docker**
@@ -111,12 +88,12 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.random_search
     ```
 
-12. **Execute LT-GOMEA Optimizer**
+12. **Execute Custom Optimizer**
 
-    Runs the Linkage Tree Gene-pool Optimal Mixing Evolutionary Algorithm (LT-GOMEA). Uses threshold-based clusters from distance matrices to guide the optimal mixing operator. This will execute the entire 9-run experiment matrix (3 trees × 3 population strategies).
+    Runs the Custom Optimizer algorithm which was implemented based on LT-GOMEA. 
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.lt_gomea_optimizer
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.custom_optimizer
     ```
 
 
@@ -146,6 +123,11 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
     ```bash
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.linkage_analyzer
     ```
+
+
+## Quick Start Pipeline (Rental Machine Setup)
+
+If you would like to setup the whole pipeline, please run step 1, 5, 6, 13, and 12 in order.
 
 ## Docker cleaning commands
 
