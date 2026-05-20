@@ -5,7 +5,7 @@ Optimizes the baseline TLS configuration using a classic GA (selection,
 crossover, mutation) with parallel fitness evaluation via SUMO.
 
 Output format matches custom_optimizer.py for easy comparison.
-Runs using only the baseline initialization strategy.
+Runs 3 experiments: random, baseline, and mixed initialization strategies.
 
 Usage:  python -m src.algorithms.simple_genetic_algorithm
 """
@@ -102,19 +102,19 @@ def build_gene_map(baseline_data):
     return tls_to_genes, idx, np.array(baseline)
 
 
-def run_single_ga(baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
-    """Run a single PyGAD GA optimization experiment with baseline initialization."""
+def run_single_ga(strategy, baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
+    """Run a single PyGAD GA optimization experiment with the given initialization strategy."""
     global _wrapper, _fitness_history
     _fitness_history = []
 
     print(f"\n{'='*60}")
-    print(f"Simple GA | Strategy: baseline | Pop: {PYGAD_POPULATION_SIZE}")
+    print(f"Simple GA | Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
     print(f"{'='*60}")
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
     # Initialize population from baseline with Gaussian noise
-    initial_pop = init_population("baseline", PYGAD_POPULATION_SIZE, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
+    initial_pop = init_population(strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
     
     gene_space = [{"low": GENE_LOW, "high": GENE_HIGH} for _ in range(num_genes)]
 
@@ -178,7 +178,7 @@ def run_single_ga(baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir,
         "fitness_history": _fitness_history,
         "time_s": round(elapsed, 2),
         "algorithm": "simple_ga",
-        "strategy": "baseline",
+        "strategy": strategy,
         "pop_size": PYGAD_POPULATION_SIZE,
         "generations": PYGAD_NUM_GENERATIONS,
         "mutation_percent_genes": PYGAD_MUTATION_PERCENT_GENES,
@@ -191,7 +191,7 @@ def run_single_ga(baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_file = out_dir / "simple_ga_baseline.json"
+    out_file = out_dir / f"simple_ga_{strategy}.json"
     with open(out_file, "w") as f:
         json.dump(results, f, indent=4)
     print(f"Saved → {out_file}")
@@ -199,8 +199,8 @@ def run_single_ga(baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir,
     return best_cost, elapsed
 
 
-def run_experiment():
-    """Run a single GA experiment using baseline initialization."""
+def run_all_experiments():
+    """Run 3 GA experiments: random, baseline, and mixed initialization."""
     global _wrapper
     
     with open(BASELINE_TRAFFIC_DATA, "r") as f:
@@ -216,19 +216,31 @@ def run_experiment():
     out_dir = root / "src" / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    strategies = ["random", "baseline", "mixed"]
+    summary = {}
+
     rng = np.random.default_rng(42)
 
-    try:
-        best_cost, elapsed = run_single_ga(
-            baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng
-        )
-        print(f"\n{'='*60}")
-        print(f"Result | Best: {best_cost:.2f} | Time: {elapsed:.1f}s")
-        print(f"{'='*60}")
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback; traceback.print_exc()
+    for strat in strategies:
+        try:
+            best_cost, elapsed = run_single_ga(
+                strat, baseline_data, num_genes, baseline_vec, tls_to_genes, out_dir, rng
+            )
+            summary[strat] = {"best": best_cost, "time_s": elapsed}
+        except Exception as e:
+            print(f"ERROR [{strat}]: {e}")
+            import traceback; traceback.print_exc()
+            summary[strat] = {"error": str(e)}
+
+    # Print results table
+    print(f"\n{'Strategy':<10} {'Best':>12} {'Time':>8}")
+    print("─" * 32)
+    for strat, info in summary.items():
+        if "error" in info:
+            print(f"{strat:<10} {'ERROR':>12}")
+        else:
+            print(f"{strat:<10} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
 
 
 if __name__ == "__main__":
-    run_experiment()
+    run_all_experiments()
