@@ -26,6 +26,3 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire project source code into the container.
 COPY . /app
-
-# Ensure the entrypoint script is executable inside the container.
-RUN chmod +x /app/entrypoint.sh
