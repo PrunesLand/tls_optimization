@@ -124,6 +124,15 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.linkage_analyzer
     ```
 
+16. ***Run Baseline Configuration***
+
+    Evaluates the current configuration of the instance map.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.baseline_evaluator
+    ```
+
+
 
 ## Quick Start Pipeline (Rental Machine Setup)
 
