@@ -29,13 +29,3 @@ COPY . /app
 
 # Ensure the entrypoint script is executable inside the container.
 RUN chmod +x /app/entrypoint.sh
-
-# Use the entrypoint script as the container's entrypoint.
-# By default it runs the full pipeline (setup + IRRG).
-# Override with: docker run tls_optimization <command>
-#   setup       - generation + netconvert only
-#   run         - IRRG only (assumes setup was done before)
-#   all         - full pipeline (default)
-#   <arbitrary> - pass-through (e.g. bash, python ...)
-# ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["all"]
