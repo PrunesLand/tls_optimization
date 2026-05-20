@@ -121,26 +121,30 @@ docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls
 
 
 
-13. **Generate Distance Matrices & Dendrograms**
+13. **Generate Distance Matrices**
 
-    Calculates the network distance matrices (Shortest, Euclidian, Fastest) and generates hierarchical clustering dendrogram plots used by the LT-GOMEA optimizer.
+    Calculates the network distance matrices (Shortest, Euclidian, Fastest) used by the optimizer.
 
     ```bash
-    # Generate the distance matrices
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_shortest
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_euclidian
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.tls_distances_fastest
-
-    # Plot the dendrograms
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.plot_dendrograms
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_shortest
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_euclidian
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_fastest
     ```
 
-14. **Analyze Linkage Statistics**
+14. **Generate Clustering Dendrograms**
+
+    Generates hierarchical clustering dendrogram plots to visualize the linkage tree structure.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.plot_dendrograms
+    ```
+
+15. **Analyze Linkage Statistics**
 
     Analyzes the calculated distance matrices to determine the optimal clustering thresholds, calculating max valid non-singleton clusters and the median cluster size for each distance metric.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.linkage_analyzer
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.linkage_analyzer
     ```
 
 ## Docker cleaning commands
