@@ -27,7 +27,7 @@ SUMO_ARGS = [
 BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/outputs/baseline_traffic_data.json")
 OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_traffic_cycles.json")
 
-# LT-GOMEA configuration
+# Custom Optimizer configuration
 POPULATION_SIZE = 100
 NUM_GENERATIONS = MAX_EVALS // POPULATION_SIZE
 GAUSSIAN_NOISE = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
