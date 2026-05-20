@@ -15,13 +15,12 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, LT_GOMEA_BASELINE_NOISE_STD, MAX_EVALS
+from config import (
+    BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, LT_GOMEA_BASELINE_NOISE_STD,
+    MAX_EVALS, NUM_SOLUTIONS, NUM_REPEATS, GENE_LOW, GENE_HIGH
+)
 from src.genetic_algorithm.fitness_evaluation import fitness_function as _traffic_fitness
 from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
-
-NUM_SOLUTIONS = MAX_EVALS
-NUM_REPEATS = 1
-GENE_LOW, GENE_HIGH = 5.0, 85.0
 
 def _eval_worker(args):
     """Picklable worker for parallel execution."""

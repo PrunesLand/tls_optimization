@@ -44,7 +44,7 @@ from config import (
     MAX_EVALS, BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
     LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
     LT_GOMEA_BASELINE_NOISE_STD, LT_GOMEA_USE_MUTATION,
-    LT_GOMEA_GENE_LOW, LT_GOMEA_GENE_HIGH, LT_GOMEA_MUTATION_RATE,
+    GENE_LOW, GENE_HIGH, MUTATION_RATE,
 )
 import json, copy, time, os, sys
 import numpy as np
@@ -62,10 +62,7 @@ THRESHOLDS = {
     "shortest":  CLUSTER_THRESHOLD_SHORTEST,
     "euclidian": CLUSTER_THRESHOLD_EUCLIDIAN,
     "fastest":   CLUSTER_THRESHOLD_FASTEST,
-}
-
-GENE_LOW, GENE_HIGH   = LT_GOMEA_GENE_LOW, LT_GOMEA_GENE_HIGH
-MUTATION_RATE         = LT_GOMEA_MUTATION_RATE   # fraction of individuals mutated per generation
+}  # fraction of individuals mutated per generation
 
 
 # ── Distance matrix helpers ──────────────────────────────────────────────────

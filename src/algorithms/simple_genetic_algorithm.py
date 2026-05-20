@@ -32,6 +32,7 @@ from config import (
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
     LT_GOMEA_BASELINE_NOISE_STD,
+    GENE_LOW, GENE_HIGH,
 )
 from src.genetic_algorithm.fitness_evaluation import fitness_function
 from src.decomposition.DG2_grouping import build_traffic_fitness_wrapper
@@ -62,9 +63,6 @@ def _on_generation(ga_instance):
         "gen": gen, "best": best_cost, "mean": mean_cost,
     })
     print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Mean: {mean_cost:.2f}")
-
-
-GENE_LOW, GENE_HIGH = 5.0, 85.0
 
 def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng):
     """Create initial population: 'random', 'baseline', or 'mixed'."""
