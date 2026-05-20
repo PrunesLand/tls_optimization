@@ -11,7 +11,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     ```bash
     docker build -t tls_optimization .
     ```
-2. **Running with Docker**
+2. **Running with Docker (Discontinued)**
 
     This will run the project with Docker.
 
