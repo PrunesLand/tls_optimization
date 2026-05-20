@@ -41,12 +41,7 @@ def fitness_function(tls_durations):
             phase_list.append(traci.trafficlight.Phase(duration, state))
 
         # Assign the logic to the simulator
-        logic = traci.trafficlight.Logic(
-            programID="custom",
-            type=0,
-            currentPhaseIndex=0,
-            phases=phase_list
-        )
+        logic = traci.trafficlight.Logic("custom", 0, 0, phase_list)
         traci.trafficlight.setProgramLogic(tl_id, logic)
         traci.trafficlight.setProgram(tl_id, "custom")
 

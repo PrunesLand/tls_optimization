@@ -1,3 +1,7 @@
 libsumo
 numpy
 pygad
+gomea
+scipy
+folium
+pyproj

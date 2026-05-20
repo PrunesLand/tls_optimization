@@ -1,5 +1,7 @@
 import os
 
+MAX_EVALS = 1000
+
 # configuration parameters for the genetic algorithm
 POPULATION = 300
 GENERATIONS = 100
@@ -7,10 +9,10 @@ MUTATION_RATE = 0.01
 CROSSOVER_RATE = 0.7
 
 # pygad configuration parameters
-PYGAD_POPULATION_SIZE = 5
-PYGAD_NUM_GENERATIONS = 2
-PYGAD_MUTATION_PERCENT_GENES = 10
-PYGAD_NUM_PARENTS_MATING = 2
+PYGAD_POPULATION_SIZE = 100
+PYGAD_NUM_GENERATIONS = MAX_EVALS // PYGAD_POPULATION_SIZE
+PYGAD_MUTATION_PERCENT_GENES = 5
+PYGAD_NUM_PARENTS_MATING = 20
 PYGAD_KEEP_PARENTS = 2
 
 # Parallel processing configuration
@@ -30,3 +32,19 @@ SUMO_ARGS = [
 ]
 BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/outputs/baseline_traffic_data.json")
 OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_traffic_cycles.json")
+
+# LT-GOMEA configuration
+LT_GOMEA_POPULATION_SIZE = 100
+LT_GOMEA_NUM_GENERATIONS = MAX_EVALS // LT_GOMEA_POPULATION_SIZE
+LT_GOMEA_BASELINE_NOISE_STD = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
+LT_GOMEA_USE_MUTATION = False  # Enable or disable pair-cluster mutation
+
+# Clustering thresholds
+CLUSTER_THRESHOLD_FASTEST = 300
+CLUSTER_THRESHOLD_SHORTEST = 4000
+CLUSTER_THRESHOLD_EUCLIDIAN = 3500
+
+# LT-GOMEA Bounds and Mutation
+LT_GOMEA_GENE_LOW = 24.0
+LT_GOMEA_GENE_HIGH = 82.0
+LT_GOMEA_MUTATION_RATE = 0.15

@@ -6,6 +6,25 @@ This is my take on optimizing traffic light controls as a discrete type problem 
 
 
 
+## Quick Start Pipeline (Rental Machine Setup)
+
+If you need to quickly run the full setup and LT-GOMEA optimization pipeline (Steps 1, 5, 6, 13, and 12), you can use the automated bash script provided in the root directory:
+
+**Using the Bash Script:**
+```bash
+./run_pipeline.sh
+```
+
+**Using the Python Script:**
+```bash
+python run_pipeline.py
+```
+
+**Using a Single Docker One-Liner (if you prefer no external scripts):**
+```bash
+docker build -t tls_optimization . && docker run --rm -v $(pwd):/app -w /app tls_optimization bash -c "python -m src.sumo_setup.generation && cd src/sumo_setup && netconvert -c osm.netccfg && cd /app && python -m src.pygad.tls_distances_shortest && python -m src.pygad.tls_distances_euclidian && python -m src.pygad.tls_distances_fastest && python -m src.pygad.plot_dendrograms && python -m src.pygad.lt_gomea_optimizer"
+```
+
 ## How to run
 
 1. **Building with Docker**
@@ -28,7 +47,7 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     This will run the PyGad Implementation of the Genetic Algorithm.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.pygad_genetic_algorithm
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.simple_genetic_algorithm
     ```
 
 4. **View map statistics**
@@ -69,15 +88,64 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     This will discover linkage of TLS by Direct Linkage Empirical Discovery.
 
     ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.dled_optimizer
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.dled_optimizer
     ```
 9. **Execute DG2 Grouping**
 
     This will execute Differential Grouping method as an alternative to linkage discovery. Theoretically it is faster than Embpirical Linkage Learning.
 
    ```bash
-    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.DG2_grouping
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.DG2_grouping
    ```
+10. **Execute IRRG**
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.decomposition.IRRG
+    ```
+
+11. **Execute Random Search**
+
+    Performs random search of n solutions and m evaluations for each solutions.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.random_search
+    ```
+
+12. **Execute LT-GOMEA Optimizer**
+
+    Runs the Linkage Tree Gene-pool Optimal Mixing Evolutionary Algorithm (LT-GOMEA). Uses threshold-based clusters from distance matrices to guide the optimal mixing operator. This will execute the entire 9-run experiment matrix (3 trees × 3 population strategies).
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.pygad.lt_gomea_optimizer
+    ```
+
+
+
+13. **Generate Distance Matrices**
+
+    Calculates the network distance matrices (Shortest, Euclidian, Fastest) used by the optimizer.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_shortest
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_euclidian
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.tls_distances_fastest
+    ```
+
+14. **Generate Clustering Dendrograms**
+
+    Generates hierarchical clustering dendrogram plots to visualize the linkage tree structure.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.plot.plot_dendrograms
+    ```
+
+15. **Analyze Linkage Statistics**
+
+    Analyzes the calculated distance matrices to determine the optimal clustering thresholds, calculating max valid non-singleton clusters and the median cluster size for each distance metric.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.linkage_analyzer
+    ```
 
 ## Docker cleaning commands
 

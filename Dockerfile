@@ -1,4 +1,4 @@
-# Base image with Python 3.9
+# Base image with Python 3.11
 FROM python:3.11-slim
 
 # Set the primary working directory
@@ -27,5 +27,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project source code into the container.
 COPY . /app
 
-# Default command to execute the main application.
-CMD ["python", "main.py"]
+# Ensure the entrypoint script is executable inside the container.
+RUN chmod +x /app/entrypoint.sh

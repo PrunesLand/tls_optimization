@@ -10,6 +10,9 @@ venv/
 .venv/
 pip-log.txt
 pip-delete-this-directory.txt
+*.png
+*.html
+
 
 # Jupyter Notebook
 .ipynb_checkpoints
