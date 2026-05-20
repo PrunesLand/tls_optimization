@@ -16,7 +16,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
-    BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, LT_GOMEA_BASELINE_NOISE_STD,
+    BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
     MAX_EVALS, NUM_SOLUTIONS, NUM_REPEATS, GENE_LOW, GENE_HIGH
 )
 from src.sumo_setup.fitness_evaluation import (
@@ -75,7 +75,7 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
     print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {NUM_SOLUTIONS}")
     print(f"{'='*60}")
 
-    solutions = init_population(strategy, NUM_SOLUTIONS, num_genes, baseline_vec, LT_GOMEA_BASELINE_NOISE_STD, rng)
+    solutions = init_population(strategy, NUM_SOLUTIONS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
     
     tasks = []
     for i, solution in enumerate(solutions):

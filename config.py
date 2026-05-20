@@ -28,10 +28,10 @@ BASELINE_TRAFFIC_DATA = os.path.join(os.path.dirname(__file__), "src/outputs/bas
 OUTPUT_JSON_PATH = os.path.join(os.path.dirname(__file__), "src/outputs/check_traffic_cycles.json")
 
 # LT-GOMEA configuration
-LT_GOMEA_POPULATION_SIZE = 100
-LT_GOMEA_NUM_GENERATIONS = MAX_EVALS // LT_GOMEA_POPULATION_SIZE
-LT_GOMEA_BASELINE_NOISE_STD = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
-LT_GOMEA_USE_MUTATION = False  # Enable or disable pair-cluster mutation
+POPULATION_SIZE = 100
+NUM_GENERATIONS = MAX_EVALS // POPULATION_SIZE
+GAUSSIAN_NOISE = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
+NOVEL_MUTATION = False  # Enable or disable pair-cluster mutation
 
 # Clustering thresholds
 CLUSTER_THRESHOLD_FASTEST = 300

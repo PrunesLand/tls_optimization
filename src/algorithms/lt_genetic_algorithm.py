@@ -31,7 +31,7 @@ from config import (
     PYGAD_KEEP_PARENTS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
-    LT_GOMEA_BASELINE_NOISE_STD,
+    GAUSSIAN_NOISE,
     GENE_LOW, GENE_HIGH,
 )
 from src.sumo_setup.fitness_evaluation import (
@@ -114,7 +114,7 @@ def run_single_ga(tree_name, strategy, baseline_data, num_genes, baseline_vec, t
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
     # Initialize population using the same logic as LT-GOMEA
-    initial_pop = init_population(strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec, LT_GOMEA_BASELINE_NOISE_STD, rng)
+    initial_pop = init_population(strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
     
     gene_space = [{"low": GENE_LOW, "high": GENE_HIGH} for _ in range(num_genes)]
 

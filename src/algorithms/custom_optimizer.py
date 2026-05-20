@@ -42,8 +42,8 @@ from config import (
     CLUSTER_THRESHOLD_SHORTEST,
     CLUSTER_THRESHOLD_EUCLIDIAN,
     MAX_EVALS, BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
-    LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
-    LT_GOMEA_BASELINE_NOISE_STD, LT_GOMEA_USE_MUTATION,
+    POPULATION_SIZE, NUM_GENERATIONS,
+    GAUSSIAN_NOISE, NOVEL_MUTATION,
     GENE_LOW, GENE_HIGH, MUTATION_RATE,
 )
 import json, copy, time, os, sys
@@ -714,7 +714,7 @@ def run_custom_optimizer(
         mut_improved = 0
         mutant_idxs = []
 
-        if LT_GOMEA_USE_MUTATION: 
+        if NOVEL_MUTATION: 
             mutant_idxs = [i for i in range(pop_size) if rng.random() < MUTATION_RATE]
 
             if mutant_idxs:
@@ -844,10 +844,10 @@ def run_all_experiments():
                 res = run_custom_optimizer(
                     tree_name, str(path), strat, baseline,
                     wrapper, num_genes, baseline_vec, tls_to_genes,
-                    LT_GOMEA_POPULATION_SIZE, LT_GOMEA_NUM_GENERATIONS,
-                    LT_GOMEA_BASELINE_NOISE_STD, n_workers,
+                    POPULATION_SIZE, NUM_GENERATIONS,
+                    GAUSSIAN_NOISE, n_workers,
                 )
-                mutation_suffix = "_mutation" if LT_GOMEA_USE_MUTATION else ""
+                mutation_suffix = "_mutation" if NOVEL_MUTATION else ""
                 out_file = out_dir / f"custom_optimizer_{label}{mutation_suffix}.json"
                 with open(out_file, "w") as f:
                     json.dump(res, f, indent=4)
