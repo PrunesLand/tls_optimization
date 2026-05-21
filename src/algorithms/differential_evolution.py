@@ -47,15 +47,11 @@ _num_evals = 0
 
 
 def _evaluate_single(vec):
-    """Evaluate a single solution vector (module-level for pickling)."""
-    global _num_evals
     try:
         cost = float(_wrapper(vec))
-        _num_evals += 1
         return cost
     except Exception as e:
         print(f"Error evaluating fitness: {e}")
-        _num_evals += 1
         return 9999999.0
 
 
@@ -93,6 +89,8 @@ class TLSProblem(Problem):
                 costs = pool.map(_evaluate_single, [row for row in pop_np])
         else:
             costs = [_evaluate_single(row) for row in pop_np]
+
+        _num_evals += len(pop_np)
 
         return torch.tensor(costs, dtype=pop.dtype, device=pop.device)
 
