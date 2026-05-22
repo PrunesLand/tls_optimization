@@ -33,6 +33,13 @@ NUM_GENERATIONS = MAX_EVALS // POPULATION_SIZE
 GAUSSIAN_NOISE = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
 NOVEL_MUTATION = False  # Enable or disable pair-cluster mutation
 
+# Multi-seed best-of-N for GOMEA (custom_optimizer_pygad).
+# GOMEA's per-solution callback prevents within-run parallelism, so extra
+# cores are absorbed by running multiple seeds per tree in parallel and
+# keeping best-of-N. Total jobs = NUM_SEEDS_PER_TREE * 3 trees.
+NUM_SEEDS_PER_TREE = 5
+SEED_BASE = 42
+
 # Clustering thresholds
 CLUSTER_THRESHOLD_FASTEST = 300
 CLUSTER_THRESHOLD_SHORTEST = 4000

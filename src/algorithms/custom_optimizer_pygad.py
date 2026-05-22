@@ -18,6 +18,7 @@ Usage:  python -m src.algorithms.custom_optimizer_pygad
 """
 import os, sys, json, copy, time
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
@@ -33,6 +34,9 @@ from config import (
     MAX_EVALS, BASELINE_TRAFFIC_DATA,
     POPULATION_SIZE,
     GENE_LOW, GENE_HIGH,
+    NUM_PROCESSORS,
+    NUM_SEEDS_PER_TREE,
+    SEED_BASE,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -44,6 +48,21 @@ THRESHOLDS = {
     "euclidian": CLUSTER_THRESHOLD_EUCLIDIAN,
     "fastest":   CLUSTER_THRESHOLD_FASTEST,
 }
+
+
+def _available_cores() -> int:
+    """Cores this process is actually allowed to use.
+
+    Prefers os.sched_getaffinity (respects taskset / cgroups / SLURM
+    pinning on Linux); falls back to os.cpu_count() on platforms without
+    it (e.g. macOS). Always returns at least 1.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            return max(1, len(os.sched_getaffinity(0)))
+        except OSError:
+            pass
+    return max(1, os.cpu_count() or 1)
 
 
 class StopOptimization(Exception):
@@ -218,27 +237,19 @@ def _rebuild_json(sol: np.ndarray, baseline: dict, tls_to_genes: dict) -> dict:
 
 def run_single_experiment(
     tree_name: str,
-    dist_path: str,
     baseline_data: dict,
     num_genes: int,
     tls_to_genes: dict,
     pop_size: int,
     max_evals: int,
-    out_dir: Path,
-    seed: int = 42,
+    fos_path: str,
+    num_clusters: int,
+    seed: int,
 ) -> dict:
-    """Run one continuous-GOMEA experiment with a custom linkage tree."""
+    """Run one continuous-GOMEA experiment with a pre-built FOS file."""
     threshold = THRESHOLDS[tree_name]
-
-    print(f"\n{'='*60}")
-    print(f"GOMEA (library) | Tree: {tree_name} (t={threshold}) | Pop: {pop_size}")
-    print(f"{'='*60}")
-
-    fos_path     = out_dir / f"custom_optimizer_pygad_fos_{tree_name}.txt"
-    num_clusters = build_fos_file(
-        dist_path, threshold, tls_to_genes, num_genes, str(fos_path),
-    )
-    print(f"FOS file → {fos_path} ({num_clusters} multi-gene clusters + {num_genes} univariate)")
+    tag = f"{tree_name} seed={seed}"
+    print(f"[{tag}] start | t={threshold} | pop={pop_size} | clusters={num_clusters}")
 
     wrapper, _, _, _, _ = build_traffic_fitness_wrapper(
         baseline_data=baseline_data,
@@ -248,7 +259,7 @@ def run_single_experiment(
     fitness_inst         = TLSFitness(num_genes, max_evals)
     fitness_inst.wrapper = wrapper
 
-    linkage_model = gomea.linkage.Custom(file=str(fos_path))
+    linkage_model = gomea.linkage.Custom(file=fos_path)
 
     rvgom = gomea.RealValuedGOMEA(
         fitness                       = fitness_inst,
@@ -289,7 +300,7 @@ def run_single_experiment(
             raise
 
     elapsed = time.time() - t0
-    print(f"Done in {elapsed:.1f}s | Final best: {best_cost:.2f} | Evals: {evals_done}")
+    print(f"[{tag}] done in {elapsed:.1f}s | best={best_cost:.2f} | evals={evals_done}")
 
     best_json                   = _rebuild_json(solution, baseline_data, tls_to_genes)
     best_json["composite_cost"] = float(best_cost)
@@ -329,34 +340,107 @@ def run_all_experiments():
         "euclidian": out_dir / "tls_distances_euclidian.json",
         "fastest":   out_dir / "tls_distances_fastest.json",
     }
-    summary: dict[str, dict] = {}
 
+    # Build each FOS file once in the parent. All seeds for a given tree
+    # share the same FOS file, so building per-worker would cause races
+    # on the same output path.
+    fos_paths: dict[str, str] = {}
+    fos_clusters: dict[str, int] = {}
     for tree_name, dist_path in trees.items():
-        try:
-            res = run_single_experiment(
-                tree_name, str(dist_path), baseline,
-                num_genes, tls_to_genes,
-                POPULATION_SIZE, MAX_EVALS, out_dir,
-            )
-            out_file = out_dir / f"custom_optimizer_pygad_{tree_name}.json"
-            with open(out_file, "w") as f:
-                json.dump(res, f, indent=4)
-            print(f"Saved → {out_file}")
-            summary[tree_name] = {"best": res["best_fitness"], "time_s": res["time_s"]}
+        fos_path = out_dir / f"custom_optimizer_pygad_fos_{tree_name}.txt"
+        n_clusters = build_fos_file(
+            str(dist_path), THRESHOLDS[tree_name],
+            tls_to_genes, num_genes, str(fos_path),
+        )
+        fos_paths[tree_name]    = str(fos_path)
+        fos_clusters[tree_name] = n_clusters
+        print(f"FOS [{tree_name}] → {fos_path} ({n_clusters} clusters + {num_genes} univariate)")
 
-        except Exception as e:
-            print(f"ERROR [{tree_name}]: {e}")
-            import traceback; traceback.print_exc()
-            summary[tree_name] = {"error": str(e)}
+    seeds     = [SEED_BASE + i for i in range(NUM_SEEDS_PER_TREE)]
+    jobs      = [(t, s) for t in trees for s in seeds]
+    detected  = _available_cores()
+    requested = NUM_PROCESSORS or detected
+    workers   = max(1, min(requested, len(jobs)))
+    cap_note  = f" (capped from NUM_PROCESSORS={NUM_PROCESSORS})" if NUM_PROCESSORS else ""
+    print(
+        f"\nLaunching {len(jobs)} runs ({len(trees)} trees × {NUM_SEEDS_PER_TREE} seeds) | "
+        f"detected {detected} cores → using {workers} workers{cap_note}\n"
+    )
+
+    per_tree_runs: dict[str, list[dict]] = {t: [] for t in trees}
+    per_tree_errors: dict[str, list[dict]] = {t: [] for t in trees}
+
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(
+                run_single_experiment,
+                tree_name, baseline,
+                num_genes, tls_to_genes,
+                POPULATION_SIZE, MAX_EVALS,
+                fos_paths[tree_name], fos_clusters[tree_name],
+                seed,
+            ): (tree_name, seed)
+            for tree_name, seed in jobs
+        }
+
+        for future in as_completed(futures):
+            tree_name, seed = futures[future]
+            try:
+                per_tree_runs[tree_name].append(future.result())
+            except Exception as e:
+                print(f"ERROR [{tree_name} seed={seed}]: {e}")
+                import traceback; traceback.print_exc()
+                per_tree_errors[tree_name].append({"seed": seed, "error": str(e)})
+
+    # ── Aggregate best-of-N per tree, save canonical JSON ───────────────────
+    summary: dict[str, dict] = {}
+    for tree_name, runs in per_tree_runs.items():
+        if not runs:
+            summary[tree_name] = {"error": "all seeds failed"}
+            continue
+
+        best_run = min(runs, key=lambda r: r["best_fitness"])
+        fits     = [r["best_fitness"] for r in runs]
+        times    = [r["time_s"]        for r in runs]
+
+        best_run["num_seeds_run"]      = len(runs)
+        best_run["num_seeds_failed"]   = len(per_tree_errors[tree_name])
+        best_run["best_seed"]          = best_run["seed"]
+        best_run["mean_best_fitness"]  = float(np.mean(fits))
+        best_run["std_best_fitness"]   = float(np.std(fits))
+        best_run["min_best_fitness"]   = float(np.min(fits))
+        best_run["max_best_fitness"]   = float(np.max(fits))
+        best_run["per_seed_stats"]     = [
+            {"seed": r["seed"], "best_fitness": r["best_fitness"],
+             "time_s": r["time_s"], "num_evals": r["num_evals"]}
+            for r in sorted(runs, key=lambda r: r["seed"])
+        ]
+        if per_tree_errors[tree_name]:
+            best_run["seed_errors"] = per_tree_errors[tree_name]
+
+        out_file = out_dir / f"custom_optimizer_pygad_{tree_name}.json"
+        with open(out_file, "w") as f:
+            json.dump(best_run, f, indent=4)
+        print(f"Saved → {out_file}  (best-of-{len(runs)} | best_seed={best_run['seed']})")
+
+        summary[tree_name] = {
+            "best":   best_run["best_fitness"],
+            "mean":   best_run["mean_best_fitness"],
+            "std":    best_run["std_best_fitness"],
+            "time_s": best_run["time_s"],
+            "n":      len(runs),
+            "max_time": float(np.max(times)),
+        }
 
     # ── Results table ────────────────────────────────────────────────────────
-    print(f"\n{'Tree':<15} {'Best':>12} {'Time':>8}")
-    print("─" * 36)
+    print(f"\n{'Tree':<12} {'Best':>10} {'Mean':>10} {'Std':>8} {'Seeds':>6} {'BestTime':>10}")
+    print("─" * 60)
     for tree_name, info in summary.items():
         if "error" in info:
-            print(f"{tree_name:<15} {'ERROR':>12}")
+            print(f"{tree_name:<12} {'ERROR':>10}")
         else:
-            print(f"{tree_name:<15} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
+            print(f"{tree_name:<12} {info['best']:>10.2f} {info['mean']:>10.2f} "
+                  f"{info['std']:>8.2f} {info['n']:>6} {info['time_s']:>9.1f}s")
 
 
 if __name__ == "__main__":
