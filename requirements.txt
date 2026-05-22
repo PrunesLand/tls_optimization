@@ -5,3 +5,4 @@ gomea
 scipy
 folium
 pyproj
+evox
