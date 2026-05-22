@@ -52,9 +52,9 @@ class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
     Tracks the best solution and fitness history inside Python to ensure we can
     recover results even if GOMEA terminates with a RuntimeError (e.g. evaluations limit).
     """
-    def __init__(self, number_of_variables, wrapper):
+    def __init__(self, number_of_variables):
         super().__init__(number_of_variables)
-        self.wrapper = wrapper
+        self.wrapper = None
         self.best_fit = float("inf")
         self.best_sol = None
         self.history = []
@@ -229,7 +229,8 @@ def run_single_experiment(
     linkage_model = gomea.linkage.Custom(file=fos_file_path)
 
     # 3. Setup custom fitness function
-    fitness_inst = TLSFitness(num_genes, wrapper)
+    fitness_inst = TLSFitness(num_genes)
+    fitness_inst.wrapper = wrapper
 
     # 4. Instantiate and configure GOMEA
     rvgom = gomea.RealValuedGOMEA(
