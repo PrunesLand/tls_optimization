@@ -3,6 +3,8 @@ GOMEA Optimizer using the official GOMEA Python library for traffic light optimi
 
 Optimizes the baseline traffic light configuration using the real-valued GOMEA library.
 Runs 3 experiments using custom linkage tree FOS files loaded from precalculated distance JSONs.
+Executes experiments in PARALLEL, strictly enforces MAX_EVALS, and guarantees
+identical rounding parity with the Differential Evolution (SHADE) optimizer.
 
 Usage:  python3 -m src.algorithms.gomea_optimizer
 """
@@ -16,6 +18,7 @@ import numpy as np
 from pathlib import Path
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import gomea
 
 # Add project root to sys.path to import config and other modules
@@ -44,16 +47,19 @@ THRESHOLDS = {
     "fastest":   CLUSTER_THRESHOLD_FASTEST,
 }
 
+# ── Custom Exceptions ────────────────────────────────────────────────────────
+
+class StopOptimization(Exception):
+    """Custom exception to hard-stop GOMEA the moment MAX_EVALS is reached."""
+    pass
+
 # ── Custom GOMEA Fitness Function ──────────────────────────────────────────
 
 class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
-    """Custom BBO fitness function wrapping the SUMO simulator wrapper.
-    
-    Tracks the best solution and fitness history inside Python to ensure we can
-    recover results even if GOMEA terminates with a RuntimeError (e.g. evaluations limit).
-    """
-    def __init__(self, number_of_variables):
+    """Custom BBO fitness function wrapping the SUMO simulator wrapper."""
+    def __init__(self, number_of_variables, max_evals):
         super().__init__(number_of_variables)
+        self.max_evals = max_evals
         self.wrapper = None
         self.best_fit = float("inf")
         self.best_sol = None
@@ -61,20 +67,23 @@ class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
         self.eval_count = 0
 
     def objective_function(self, objective_index, variables):
+        # Strictly enforce MAX_EVALS limit before evaluating
+        if self.eval_count >= self.max_evals:
+            raise StopOptimization(f"Strict evaluation limit of {self.max_evals} reached.")
+
         self.eval_count += 1
         
-        # Round variables to integers (whole numbers) to match differential_evolution
+        # 1. Round continuous variables to integers for simulator evaluation
         rounded_vars = np.round(variables).astype(int)
         
-        # Evaluate fitness via the SUMO wrapper
+        # 2. Evaluate fitness via the SUMO wrapper
         cost = float(self.wrapper(rounded_vars))
         
-        # Track best solution
+        # 3. Track best continuous solution and cost
         if cost < self.best_fit:
             self.best_fit = cost
-            self.best_sol = np.array(variables)  # store continuous representation
+            self.best_sol = np.array(variables)  
             
-            # Record history (gen estimated using pop_size = 100)
             gen = self.eval_count // 100
             self.history.append({
                 "gen": gen,
@@ -83,7 +92,6 @@ class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
             })
             
         return cost
-
 
 # ── Distance Matrix loading ──────────────────────────────────────────────────
 
@@ -114,19 +122,13 @@ def _load_distance_array(distance_json: str):
 # ── FOS File Generation ──────────────────────────────────────────────────────
 
 def build_fos_file(distance_json: str, threshold: float, tls_to_genes: dict, num_genes: int, output_fos_path: str):
-    """Build a Family of Subsets (FOS) file from Ward linkage of the distance matrix.
-    
-    Includes univariate singletons for all genes, and subsets representing clusters of TLSs.
-    """
-    # 1. Load distance matrix
+    """Build a Family of Subsets (FOS) file from Ward linkage of the distance matrix."""
     arr, tls_ids = _load_distance_array(distance_json)
     n = len(tls_ids)
     
-    # 2. Compute Ward linkage
     condensed = squareform(arr)
     Z = linkage(condensed, method="ward")
     
-    # 3. Build leaf membership for all nodes in the tree
     members = {i: [i] for i in range(n)}
     for i, row in enumerate(Z):
         left, right = int(row[0]), int(row[1])
@@ -134,21 +136,17 @@ def build_fos_file(distance_json: str, threshold: float, tls_to_genes: dict, num
         
     root_id = n + len(Z) - 1
     
-    # 4. Extract sub-threshold internal nodes
     tls_masks = []
     for i, row in enumerate(Z):
         node_id = n + i
         merge_dist = float(row[2])
         tls_group = [tls_ids[m] for m in members[node_id]]
         
-        if node_id == root_id:
-            continue  # Exclude root cluster containing all TLSs
-        if merge_dist > threshold:
-            continue  # Exceeds clustering threshold
+        if node_id == root_id or merge_dist > threshold:
+            continue
             
         tls_masks.append(tls_group)
         
-    # 5. Map TLS clusters to flat gene indices
     gene_subsets = []
     for mask in tls_masks:
         subset = []
@@ -159,31 +157,34 @@ def build_fos_file(distance_json: str, threshold: float, tls_to_genes: dict, num
         if len(subset) >= 2:
             gene_subsets.append(subset)
 
-    # 6. Write FOS to file (space-separated indices, one group per line)
     Path(output_fos_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_fos_path, "w") as f:
-        # First write univariate singletons
         for i in range(num_genes):
             f.write(f"{i}\n")
-        # Then write multi-variable clusters
         for subset in gene_subsets:
             subset_str = " ".join(str(idx) for idx in subset)
             f.write(f"{subset_str}\n")
             
-    print(f"FOS file generated at: {output_fos_path} ({num_genes} singletons, {len(gene_subsets)} clusters)")
     return len(gene_subsets)
 
 
 # ── JSON Reconstruction ──────────────────────────────────────────────────────
 
 def _rebuild_json(sol: np.ndarray, baseline: dict, tls_to_genes: dict) -> dict:
-    """Convert flat solution vector back to full SUMO TLS JSON configuration (90 s total per TLS)."""
+    """Convert flat solution vector back to full SUMO TLS JSON configuration."""
+    
+    # NEW: First convert the continuous best solution to integers to match the exact 
+    # numbers that the SUMO simulator scored (parity with DE rounding logic).
+    sol_rounded = np.round(sol).astype(int)
+
     out = copy.deepcopy(baseline)
     for tls_id in sorted(out["tls_data"]):
         if tls_id not in tls_to_genes:
             continue
         s, e = tls_to_genes[tls_id]
-        raw = sol[s:e]
+        
+        # Use the integer-rounded values for distribution
+        raw = sol_rounded[s:e]
         keys = sorted(out["tls_data"][tls_id])
         n = len(keys)
         total = float(sum(raw))
@@ -208,31 +209,30 @@ def run_single_experiment(
     tree_name: str,
     dist_path: str,
     baseline_data: dict,
-    wrapper,
     num_genes: int,
     tls_to_genes: dict,
     pop_size: int,
     max_evals: int,
     seed: int = 42,
 ) -> dict:
-    """Run GOMEA optimization for a single linkage tree."""
-    print(f"\n{'='*60}")
-    print(f"GOMEA | Tree: {tree_name} | Pop Size: {pop_size} | Max Evals: {max_evals}")
-    print(f"{'='*60}")
+    """Run GOMEA optimization for a single linkage tree in an isolated process."""
+    print(f"\n[Process: {tree_name}] Starting... | Pop Size: {pop_size} | Max Evals: {max_evals}")
 
-    # 1. Generate FOS file
+    # Initialize SUMO wrapper inside the parallel process to avoid port collisions
+    wrapper, _, _, _, _ = build_traffic_fitness_wrapper(
+        baseline_data=baseline_data,
+        fitness_function=_traffic_fitness,
+    )
+
     threshold = THRESHOLDS[tree_name]
     fos_file_path = f"src/outputs/gomea_fos_{tree_name}.txt"
     num_clusters = build_fos_file(dist_path, threshold, tls_to_genes, num_genes, fos_file_path)
 
-    # 2. Setup linkage model from file
     linkage_model = gomea.linkage.Custom(file=fos_file_path)
 
-    # 3. Setup custom fitness function
-    fitness_inst = TLSFitness(num_genes)
+    fitness_inst = TLSFitness(num_genes, max_evals)
     fitness_inst.wrapper = wrapper
 
-    # 4. Instantiate and configure GOMEA
     rvgom = gomea.RealValuedGOMEA(
         fitness=fitness_inst,
         linkage_model=linkage_model,
@@ -240,37 +240,32 @@ def run_single_experiment(
         upper_init_range=GENE_HIGH,
         random_seed=seed,
         base_population_size=pop_size,
-        max_number_of_populations=1,  # disables IMS multi-start, forces pop size = 100
+        max_number_of_populations=1, 
         max_number_of_evaluations=max_evals,
         verbose=False,
     )
 
-    # 5. Run optimization
     t0 = time.time()
     try:
         res = rvgom.run()
-        elapsed = time.time() - t0
         best_sol_str = res.final_metrics_dict["best_solution"]
         solution = np.array(json.loads(best_sol_str))
         best_cost = float(res.final_metrics_dict["best_obj_val"])
         evals_done = int(res.final_metrics_dict["evaluations"])
-        
-        # Extract history from run object
-        fitness_history = []
-        if "generation" in res.generational_metrics_dict:
-            for i in range(len(res.generational_metrics_dict["generation"])):
-                fitness_history.append({
-                    "gen": int(res.generational_metrics_dict["generation"][i]),
-                    "best": float(res.generational_metrics_dict["best_obj_val"][i]),
-                    "mean": float(res.generational_metrics_dict["best_obj_val"][i]),
-                })
-        else:
-            fitness_history = fitness_inst.history
-            
+        fitness_history = fitness_inst.history
+
+    except StopOptimization as e:
+        # Strictly caught MAX_EVALS limit
+        print(f"\n[Process: {tree_name}] Halted precisely at MAX_EVALS: {e}")
+        solution = fitness_inst.best_sol
+        best_cost = fitness_inst.best_fit
+        evals_done = fitness_inst.eval_count
+        fitness_history = fitness_inst.history
+
     except RuntimeError as e:
-        elapsed = time.time() - t0
-        if "evaluations" in str(e) or "generations" in str(e) or "time" in str(e):
-            print(f"GOMEA terminated via expected limit exception: {e}")
+        # Standard GOMEA termination handling
+        if "evaluations" in str(e) or "generations" in str(e):
+            print(f"\n[Process: {tree_name}] GOMEA Native limit reached: {e}")
             solution = fitness_inst.best_sol
             best_cost = fitness_inst.best_fit
             evals_done = fitness_inst.eval_count
@@ -278,9 +273,9 @@ def run_single_experiment(
         else:
             raise e
 
-    print(f"Completed in {elapsed:.1f}s | Best Fitness: {best_cost:.2f} | Evals: {evals_done}")
+    elapsed = time.time() - t0
+    print(f"[Process: {tree_name}] Completed in {elapsed:.1f}s | Best Fitness: {best_cost:.2f} | Evals: {evals_done}")
 
-    # Reconstruct final best JSON configuration
     best_json = _rebuild_json(solution, baseline_data, tls_to_genes)
     best_json["composite_cost"] = float(best_cost)
 
@@ -292,7 +287,7 @@ def run_single_experiment(
         "algorithm":          "gomea_library",
         "tree":               tree_name,
         "threshold":          threshold,
-        "strategy":           "random",
+        "strategy":           "parallel_eval",
         "pop_size":           pop_size,
         "generations":        evals_done // pop_size,
         "num_masks":          num_clusters,
@@ -308,57 +303,63 @@ def run_all_experiments():
     with open(BASELINE_TRAFFIC_DATA) as f:
         baseline = json.load(f)
 
-    # Initialize SUMO fitness evaluation wrapper
-    wrapper, num_genes, _, _, _ = build_traffic_fitness_wrapper(
-        baseline_data=baseline,
-        fitness_function=_traffic_fitness,
-    )
-
-    out_dir = Path("src/outputs")
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Define paths to distance files
-    trees = {
-        "shortest":  out_dir / "tls_distances_shortest.json",
-        "euclidian": out_dir / "tls_distances_euclidian.json",
-        "fastest":   out_dir / "tls_distances_fastest.json",
-    }
-
-    # Gather gene mapping metadata
+    # Gather gene mapping metadata (calculate once on main thread)
     tls_to_genes = {}
     idx = 0
     for tls_id in sorted(baseline["tls_data"]):
         phases = sorted(baseline["tls_data"][tls_id])
         tls_to_genes[tls_id] = (idx, idx + len(phases))
         idx += len(phases)
+    
+    num_genes = idx
+
+    out_dir = Path("src/outputs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    trees = {
+        "shortest":  out_dir / "tls_distances_shortest.json",
+        "euclidian": out_dir / "tls_distances_euclidian.json",
+        "fastest":   out_dir / "tls_distances_fastest.json",
+    }
 
     summary = {}
-
-    for tree_name, dist_path in trees.items():
-        try:
-            res = run_single_experiment(
+    
+    # Run experiments in parallel using ProcessPoolExecutor
+    print(f"Starting {len(trees)} experiments in PARALLEL...")
+    
+    with ProcessPoolExecutor(max_workers=len(trees)) as executor:
+        futures = {}
+        for tree_name, dist_path in trees.items():
+            # Submit the task to an independent process
+            future = executor.submit(
+                run_single_experiment,
                 tree_name=tree_name,
                 dist_path=str(dist_path),
                 baseline_data=baseline,
-                wrapper=wrapper,
                 num_genes=num_genes,
                 tls_to_genes=tls_to_genes,
                 pop_size=POPULATION_SIZE,
                 max_evals=MAX_EVALS,
             )
+            futures[future] = tree_name
 
-            out_file = out_dir / f"gomea_{tree_name}_random.json"
-            with open(out_file, "w") as f:
-                json.dump(res, f, indent=4)
-            print(f"Saved results to: {out_file}")
-            
-            summary[tree_name] = {"best": res["best_fitness"], "time_s": res["time_s"]}
-
-        except Exception as e:
-            print(f"ERROR running experiment [{tree_name}]: {e}")
-            import traceback
-            traceback.print_exc()
-            summary[tree_name] = {"error": str(e)}
+        # Process results as they complete
+        for future in as_completed(futures):
+            tree_name = futures[future]
+            try:
+                res = future.result()
+                
+                out_file = out_dir / f"gomea_{tree_name}_parallel.json"
+                with open(out_file, "w") as f:
+                    json.dump(res, f, indent=4)
+                    
+                summary[tree_name] = {"best": res["best_fitness"], "time_s": res["time_s"]}
+                
+            except Exception as e:
+                print(f"ERROR running experiment [{tree_name}]: {e}")
+                import traceback
+                traceback.print_exc()
+                summary[tree_name] = {"error": str(e)}
 
     # Print summary comparison table
     print(f"\n{'Linkage Tree':<15} {'Best Fitness (Min)':>20} {'Runtime (s)':>12}")
