@@ -6,12 +6,13 @@ based Adaptive Differential Evolution) algorithm from the EvoX library
 with parallel fitness evaluation via SUMO.
 
 When config.NOVEL_MUTATION is True, the end of each SHADE generation
-applies a novel pair-cluster mutation (borrowed from
+applies a pair-cluster mutation (borrowed from
 src.algorithms.custom_optimizer) to a MUTATION_RATE fraction of the
-population.  Mutants are accepted greedily — only when they improve on
-their parent's fitness — so SHADE's adaptive state is never overwritten
-by a worse individual.  When NOVEL_MUTATION is False, the loop runs as
-plain SHADE.
+population.  Pair clusters are derived from the Ward linkage tree built
+on each distance matrix (shortest / euclidian / fastest).  Mutants are
+accepted greedily — only when they improve on their parent's fitness —
+so SHADE's adaptive state is never overwritten by a worse individual.
+When NOVEL_MUTATION is False, the loop runs as plain SHADE.
 
 Runs 3 experiments: one per Ward distance tree
 (shortest / euclidian / fastest), all with random initialization.
@@ -42,7 +43,6 @@ from config import (
     MAX_EVALS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
-    GAUSSIAN_NOISE,
     GENE_LOW, GENE_HIGH,
     MUTATION_RATE,
     NOVEL_MUTATION,
@@ -119,35 +119,15 @@ class TLSProblem(Problem):
         return torch.tensor(costs, dtype=pop.dtype, device=pop.device)
 
 
-# ── Population initialisation strategies ────────────────────────────
+# ── Population initialisation ───────────────────────────────────────
 
-def init_population(strategy, n, num_genes, baseline_vec, noise_std,
-                    bounds_lo, bounds_hi, rng):
-    """Create initial population: 'random', 'baseline', or 'mixed'.
+def init_population(n, num_genes, bounds_lo, bounds_hi, rng):
+    """Create a random initial population.
 
-    Returns an (n, num_genes) array with values clipped to [bounds_lo, bounds_hi]
+    Returns an (n, num_genes) array with values in [bounds_lo, bounds_hi]
     and rounded to whole numbers.
     """
-    if strategy == "random":
-        pop = rng.uniform(bounds_lo, bounds_hi, (n, num_genes))
-
-    elif strategy == "baseline":
-        pop = np.tile(baseline_vec, (n, 1))
-        pop += rng.normal(0, noise_std, pop.shape) * pop
-        pop = np.clip(pop, bounds_lo, bounds_hi)
-
-    elif strategy == "mixed":
-        half = n // 2
-        rand_part = rng.uniform(bounds_lo, bounds_hi, (half, num_genes))
-        base_part = np.tile(baseline_vec, (n - half, 1))
-        base_part += rng.normal(0, noise_std, base_part.shape) * base_part
-        base_part = np.clip(base_part, bounds_lo, bounds_hi)
-        pop = np.vstack([rand_part, base_part])
-
-    else:
-        raise ValueError(f"Unknown strategy: {strategy}")
-
-    # Round to whole numbers
+    pop = rng.uniform(bounds_lo, bounds_hi, (n, num_genes))
     return np.round(pop).astype(float)
 
 
@@ -171,14 +151,14 @@ def build_gene_map(baseline_data):
 
 # ── Single DE-SHADE run ─────────────────────────────────────────────
 
-def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
-                  baseline_vec, tls_to_genes, bounds_lo, bounds_hi, out_dir, rng):
-    """Run a single EvoX SHADE experiment with end-of-generation pair mutation.
+def run_single_de(tree_name, dist_path, baseline_data, num_genes,
+                  tls_to_genes, bounds_lo, bounds_hi, out_dir, rng):
+    """Run a single EvoX SHADE experiment with random initialization.
 
-    Pair clusters are derived from the Ward linkage tree built on the
-    provided distance JSON; a MUTATION_RATE fraction of individuals are
-    pair-mutated each generation and accepted only if they beat their
-    parent's fitness.
+    When NOVEL_MUTATION is True, end-of-generation pair-cluster mutation
+    is applied to a MUTATION_RATE fraction of the population, using pairs
+    derived from the Ward linkage tree at *dist_path*.  Mutants are
+    accepted only if they improve on their parent's fitness.
     """
     global _wrapper, _num_evals
 
@@ -188,12 +168,9 @@ def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
     threshold = THRESHOLDS[tree_name]
     print(f"\n{'='*60}")
     print(f"SHADE (EvoX) | Tree: {tree_name} (t={threshold}) | "
-          f"Strategy: {strategy} | Pop: {PYGAD_POPULATION_SIZE}")
+          f"Random init | Pop: {PYGAD_POPULATION_SIZE}")
     print(f"{'='*60}")
 
-    # ── Build pair clusters from the Ward tree for end-of-gen mutation ──
-    # Only needed when NOVEL_MUTATION is enabled; skip the tree build
-    # entirely when the mutation is toggled off.
     if NOVEL_MUTATION:
         _, pair_clusters, _ = build_all_tree_masks(dist_path, threshold)
         valid_pairs = [(a, b) for a, b in pair_clusters
@@ -205,10 +182,8 @@ def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
-    # Build initial population using our strategy
     initial_pop_np = init_population(
-        strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec,
-        GAUSSIAN_NOISE, bounds_lo, bounds_hi, rng,
+        PYGAD_POPULATION_SIZE, num_genes, bounds_lo, bounds_hi, rng,
     )
 
     # Convert bounds and initial population to PyTorch tensors
@@ -251,7 +226,6 @@ def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
         # MUTATION_RATE subset, then greedily replace parents only when
         # the mutant improves.  problem.evaluate() auto-increments
         # _num_evals via TLSProblem, so the eval budget is respected.
-        # Skipped entirely when NOVEL_MUTATION is False.
         mut_attempted = 0
         mut_improved  = 0
         if NOVEL_MUTATION and valid_pairs and _num_evals < MAX_EVALS:
@@ -348,7 +322,7 @@ def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
         "time_s": round(elapsed, 2),
         "algorithm": "shade_evox_pair_mutation" if NOVEL_MUTATION else "shade_evox",
         "novel_mutation": NOVEL_MUTATION,
-        "strategy": strategy,
+        "strategy": "random",
         "tree": tree_name,
         "threshold": threshold,
         "mutation_rate": MUTATION_RATE if NOVEL_MUTATION else None,
@@ -370,7 +344,7 @@ def run_single_de(strategy, tree_name, dist_path, baseline_data, num_genes,
     return best_cost, elapsed
 
 
-# ── Run all 3 experiments ───────────────────────────────────────────
+# ── Run the experiment ──────────────────────────────────────────────
 
 def run_all_experiments():
     """Run 3 SHADE experiments — one per Ward distance tree, random init."""
@@ -383,7 +357,7 @@ def run_all_experiments():
         baseline_data=baseline_data, fitness_function=fitness_function,
     )
 
-    tls_to_genes, _, baseline_vec = build_gene_map(baseline_data)
+    tls_to_genes, _, _ = build_gene_map(baseline_data)
 
     root = Path(__file__).resolve().parent.parent.parent
     out_dir = root / "src" / "outputs"
@@ -401,9 +375,8 @@ def run_all_experiments():
     for tree_name, dist_path in trees.items():
         try:
             best_cost, elapsed = run_single_de(
-                "random", tree_name, str(dist_path), baseline_data,
-                num_genes, baseline_vec, tls_to_genes,
-                bounds_lo, bounds_hi, out_dir, rng,
+                tree_name, str(dist_path), baseline_data, num_genes,
+                tls_to_genes, bounds_lo, bounds_hi, out_dir, rng,
             )
             summary[tree_name] = {"best": best_cost, "time_s": elapsed}
         except Exception as e:
@@ -411,7 +384,6 @@ def run_all_experiments():
             import traceback; traceback.print_exc()
             summary[tree_name] = {"error": str(e)}
 
-    # Print results table
     print(f"\n{'Tree':<12} {'Best':>12} {'Time':>8}")
     print("─" * 34)
     for tree_name, info in summary.items():
