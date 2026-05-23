@@ -151,34 +151,39 @@ def build_gene_map(baseline_data):
 
 # ── Single DE-SHADE run ─────────────────────────────────────────────
 
-def run_single_de(tree_name, dist_path, baseline_data, num_genes,
-                  tls_to_genes, bounds_lo, bounds_hi, out_dir, rng):
+def run_single_de(baseline_data, num_genes, tls_to_genes,
+                  bounds_lo, bounds_hi, out_dir, rng,
+                  tree_name=None, dist_path=None):
     """Run a single EvoX SHADE experiment with random initialization.
 
     When NOVEL_MUTATION is True, end-of-generation pair-cluster mutation
     is applied to a MUTATION_RATE fraction of the population, using pairs
     derived from the Ward linkage tree at *dist_path*.  Mutants are
     accepted only if they improve on their parent's fitness.
+
+    When NOVEL_MUTATION is False, *tree_name* and *dist_path* are ignored
+    and the run is plain SHADE with random initialization.
     """
     global _wrapper, _num_evals
 
     _num_evals = 0
     fitness_history = []
 
-    threshold = THRESHOLDS[tree_name]
     print(f"\n{'='*60}")
-    print(f"SHADE (EvoX) | Tree: {tree_name} (t={threshold}) | "
-          f"Random init | Pop: {PYGAD_POPULATION_SIZE}")
-    print(f"{'='*60}")
-
     if NOVEL_MUTATION:
+        threshold = THRESHOLDS[tree_name]
+        print(f"SHADE (EvoX) | Tree: {tree_name} (t={threshold}) | "
+              f"Random init | Pop: {PYGAD_POPULATION_SIZE}")
+        print(f"{'='*60}")
         _, pair_clusters, _ = build_all_tree_masks(dist_path, threshold)
         valid_pairs = [(a, b) for a, b in pair_clusters
                        if a in tls_to_genes and b in tls_to_genes]
         print(f"Pair-mutation: ENABLED — {len(valid_pairs)} 2-TLS pairs")
     else:
+        threshold = None
+        print(f"SHADE (EvoX) | Random init | Pop: {PYGAD_POPULATION_SIZE}")
+        print(f"{'='*60}")
         valid_pairs = []
-        print("Pair-mutation: DISABLED (NOVEL_MUTATION=False) — plain SHADE")
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
@@ -267,14 +272,19 @@ def run_single_de(tree_name, dist_path, baseline_data, num_genes,
         else:
             best_cost = float("inf")
 
-        fitness_history.append({
-            "gen": gen, "best": best_cost, "evals": _num_evals,
-            "mut_attempted": mut_attempted, "mut_improved": mut_improved,
-        })
-        print(
-            f"Gen {gen:3d} | Best: {best_cost:.2f} | Evals: {_num_evals} "
-            f"| Mut+{mut_improved}/{mut_attempted}"
-        )
+        history_entry = {"gen": gen, "best": best_cost, "evals": _num_evals}
+        if NOVEL_MUTATION:
+            history_entry["mut_attempted"] = mut_attempted
+            history_entry["mut_improved"] = mut_improved
+        fitness_history.append(history_entry)
+
+        if NOVEL_MUTATION:
+            print(
+                f"Gen {gen:3d} | Best: {best_cost:.2f} | Evals: {_num_evals} "
+                f"| Mut+{mut_improved}/{mut_attempted}"
+            )
+        else:
+            print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Evals: {_num_evals}")
 
     elapsed = time.time() - t0
 
@@ -323,10 +333,6 @@ def run_single_de(tree_name, dist_path, baseline_data, num_genes,
         "algorithm": "shade_evox_pair_mutation" if NOVEL_MUTATION else "shade_evox",
         "novel_mutation": NOVEL_MUTATION,
         "strategy": "random",
-        "tree": tree_name,
-        "threshold": threshold,
-        "mutation_rate": MUTATION_RATE if NOVEL_MUTATION else None,
-        "num_pair_clusters": len(valid_pairs),
         "pop_size": PYGAD_POPULATION_SIZE,
         "integrality": True,
         "num_genes": num_genes,
@@ -335,8 +341,16 @@ def run_single_de(tree_name, dist_path, baseline_data, num_genes,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    mutation_suffix = "_mutation" if NOVEL_MUTATION else ""
-    out_file = out_dir / f"differential_evolution_{tree_name}{mutation_suffix}.json"
+    if NOVEL_MUTATION:
+        results.update({
+            "tree": tree_name,
+            "threshold": threshold,
+            "mutation_rate": MUTATION_RATE,
+            "num_pair_clusters": len(valid_pairs),
+        })
+        out_file = out_dir / f"differential_evolution_{tree_name}_mutation.json"
+    else:
+        out_file = out_dir / "differential_evolution.json"
     with open(out_file, "w") as f:
         json.dump(results, f, indent=4)
     print(f"Saved → {out_file}")
@@ -347,7 +361,12 @@ def run_single_de(tree_name, dist_path, baseline_data, num_genes,
 # ── Run the experiment ──────────────────────────────────────────────
 
 def run_all_experiments():
-    """Run 3 SHADE experiments — one per Ward distance tree, random init."""
+    """Run SHADE experiments.
+
+    With NOVEL_MUTATION=True, runs once per Ward distance tree
+    (shortest / euclidian / fastest).  With NOVEL_MUTATION=False, runs
+    a single plain-SHADE experiment with random initialization.
+    """
     global _wrapper
 
     with open(BASELINE_TRAFFIC_DATA, "r") as f:
@@ -363,34 +382,48 @@ def run_all_experiments():
     out_dir = root / "src" / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trees = {
-        "shortest":  out_dir / "tls_distances_shortest.json",
-        "euclidian": out_dir / "tls_distances_euclidian.json",
-        "fastest":   out_dir / "tls_distances_fastest.json",
-    }
-    summary = {}
-
     rng = np.random.default_rng(42)
 
-    for tree_name, dist_path in trees.items():
+    if NOVEL_MUTATION:
+        trees = {
+            "shortest":  out_dir / "tls_distances_shortest.json",
+            "euclidian": out_dir / "tls_distances_euclidian.json",
+            "fastest":   out_dir / "tls_distances_fastest.json",
+        }
+        summary = {}
+
+        for tree_name, dist_path in trees.items():
+            try:
+                best_cost, elapsed = run_single_de(
+                    baseline_data, num_genes, tls_to_genes,
+                    bounds_lo, bounds_hi, out_dir, rng,
+                    tree_name=tree_name, dist_path=str(dist_path),
+                )
+                summary[tree_name] = {"best": best_cost, "time_s": elapsed}
+            except Exception as e:
+                print(f"ERROR [{tree_name}]: {e}")
+                import traceback; traceback.print_exc()
+                summary[tree_name] = {"error": str(e)}
+
+        print(f"\n{'Tree':<12} {'Best':>12} {'Time':>8}")
+        print("─" * 34)
+        for tree_name, info in summary.items():
+            if "error" in info:
+                print(f"{tree_name:<12} {'ERROR':>12}")
+            else:
+                print(f"{tree_name:<12} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
+    else:
         try:
             best_cost, elapsed = run_single_de(
-                tree_name, str(dist_path), baseline_data, num_genes,
-                tls_to_genes, bounds_lo, bounds_hi, out_dir, rng,
+                baseline_data, num_genes, tls_to_genes,
+                bounds_lo, bounds_hi, out_dir, rng,
             )
-            summary[tree_name] = {"best": best_cost, "time_s": elapsed}
+            print(f"\n{'Best':>12} {'Time':>8}")
+            print("─" * 22)
+            print(f"{best_cost:>12.2f} {elapsed:>7.1f}s")
         except Exception as e:
-            print(f"ERROR [{tree_name}]: {e}")
+            print(f"ERROR: {e}")
             import traceback; traceback.print_exc()
-            summary[tree_name] = {"error": str(e)}
-
-    print(f"\n{'Tree':<12} {'Best':>12} {'Time':>8}")
-    print("─" * 34)
-    for tree_name, info in summary.items():
-        if "error" in info:
-            print(f"{tree_name:<12} {'ERROR':>12}")
-        else:
-            print(f"{tree_name:<12} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
 
 
 if __name__ == "__main__":
