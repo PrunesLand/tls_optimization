@@ -138,6 +138,19 @@ This is my take on optimizing traffic light controls as a discrete type problem 
     docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.lt_genetic_algorithm
     ```
 
+18. **Run Differential Evolution (SHADE)**
+
+    Runs the EvoX SHADE implementation on the baseline TLS configuration.
+    Behavior depends on `NOVEL_MUTATION` in `config.py`: when `False`, a single
+    plain SHADE run is performed; when `True`, three runs are executed (one per
+    Ward distance tree: shortest / euclidian / fastest) with end-of-generation
+    pair-cluster mutation applied to a `MUTATION_RATE` fraction of the
+    population. Requires step 13 (distance matrices) when `NOVEL_MUTATION=True`.
+
+    ```bash
+    docker run --rm -v $(pwd):/app -w /app tls_optimization python -m src.algorithms.differential_evolution
+    ```
+
 
 
 ## Quick Start Pipeline (Rental Machine Setup)
