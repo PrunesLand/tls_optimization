@@ -34,6 +34,22 @@ import torch
 from evox.algorithms import SHADE
 from evox.workflows import StdWorkflow, EvalMonitor
 from evox.core import Problem
+from evox.algorithms.so.de_variants import shade as _shade_module
+from evox.operators.crossover import DE_binary_crossover as _orig_de_binary_crossover
+
+# Capture CR_vect from inside SHADE.step(). SHADE samples a fresh CR per
+# individual each generation and feeds it directly into DE_binary_crossover;
+# wrapping that call is the simplest way to observe the actual CRs used.
+_last_cr_vect = None
+
+
+def _capturing_binary_crossover(mutation_vector, current_vect, CR_vect):
+    global _last_cr_vect
+    _last_cr_vect = CR_vect.detach().clone()
+    return _orig_de_binary_crossover(mutation_vector, current_vect, CR_vect)
+
+
+_shade_module.DE_binary_crossover = _capturing_binary_crossover
 
 # Add project root to sys.path to import config and other modules
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -232,6 +248,13 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         _num_evals += PYGAD_POPULATION_SIZE
         gen += 1
 
+        cr_np = _last_cr_vect.cpu().numpy() if _last_cr_vect is not None else None
+        if cr_np is not None:
+            cr_str = np.array2string(
+                cr_np, precision=3, suppress_small=True, max_line_width=200,
+            )
+            print(f"  CR per individual (gen {gen}): {cr_str}")
+
         # ── End-of-generation pair-cluster mutation ─────────────────────
         # Pull SHADE's current population/fitness, pair-mutate a
         # MUTATION_RATE subset, then greedily replace parents only when
@@ -280,6 +303,8 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
             best_cost = float("inf")
 
         history_entry = {"gen": gen, "best": best_cost, "evals": _num_evals}
+        if cr_np is not None:
+            history_entry["cr"] = cr_np.tolist()
         if NOVEL_MUTATION:
             history_entry["mut_attempted"] = mut_attempted
             history_entry["mut_improved"] = mut_improved
