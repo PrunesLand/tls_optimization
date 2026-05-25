@@ -103,8 +103,6 @@ class TLSProblem(Problem):
         Returns:
             Tensor of shape (pop_size,) with fitness values (costs).
         """
-        global _num_evals
-
         # Round to whole numbers and convert to numpy
         pop_np = torch.round(pop).cpu().numpy()
 
@@ -113,8 +111,6 @@ class TLSProblem(Problem):
                 costs = pool.map(_evaluate_single, [row for row in pop_np])
         else:
             costs = [_evaluate_single(row) for row in pop_np]
-
-        _num_evals += len(pop_np)
 
         return torch.tensor(costs, dtype=pop.dtype, device=pop.device)
 
@@ -213,17 +209,27 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         monitor=monitor,
     )
 
-    # Inject our custom initial population into the algorithm's internal buffer
-    workflow.init_step()
+    # Inject our custom initial population into SHADE's buffer and evaluate
+    # it through the workflow so the monitor records these evaluations and
+    # algorithm.fit.data matches algorithm.pop.data before the loop begins.
+    # We intentionally skip workflow.init_step(): for SHADE it falls through
+    # to SHADE.step() (no init_step override), which would evaluate SHADE's
+    # auto-generated random init and leave fit.data describing individuals
+    # that no longer exist after our injection.
     init_pop_tensor = torch.tensor(initial_pop_np, dtype=torch.float64)
     algorithm.pop.data.copy_(init_pop_tensor)
+    init_fitness = workflow.algorithm.evaluate(init_pop_tensor)
+    algorithm.fit.data.copy_(init_fitness)
 
     t0 = time.time()
     gen = 0
 
-    # Run generation-by-generation to enforce MAX_EVALS and log progress
+    # Run generation-by-generation to enforce MAX_EVALS and log progress.
+    # Initialization evaluations are excluded; the budget covers only
+    # evaluations performed inside the generational loop.
     while _num_evals < MAX_EVALS:
         workflow.step()
+        _num_evals += PYGAD_POPULATION_SIZE
         gen += 1
 
         # ── End-of-generation pair-cluster mutation ─────────────────────
@@ -257,6 +263,7 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
                     mutants_np, dtype=pop_data.dtype, device=pop_data.device,
                 )
                 mutant_fits = problem.evaluate(mutants_tensor)
+                _num_evals += len(mutant_idxs)
                 mut_attempted = len(mutant_idxs)
 
                 for j, i in enumerate(mutant_idxs):
