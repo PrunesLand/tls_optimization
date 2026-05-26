@@ -57,14 +57,16 @@ class StopOptimization(Exception):
 
 class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
     """Custom BBO fitness function wrapping the SUMO simulator wrapper."""
-    def __init__(self, number_of_variables, max_evals):
+    def __init__(self, number_of_variables, max_evals, pop_size):
         super().__init__(number_of_variables)
         self.max_evals = max_evals
+        self.pop_size = pop_size
         self.wrapper = None
         self.best_fit = float("inf")
         self.best_sol = None
         self.history = []
         self.eval_count = 0
+        self._gen_costs = []
 
     def objective_function(self, objective_index, variables):
         # Strictly enforce MAX_EVALS limit before evaluating
@@ -72,25 +74,31 @@ class TLSFitness(gomea.fitness.BBOFitnessFunctionRealValued):
             raise StopOptimization(f"Strict evaluation limit of {self.max_evals} reached.")
 
         self.eval_count += 1
-        
+
         # 1. Round continuous variables to integers for simulator evaluation
         rounded_vars = np.round(variables).astype(int)
-        
+
         # 2. Evaluate fitness via the SUMO wrapper
         cost = float(self.wrapper(rounded_vars))
-        
+
         # 3. Track best continuous solution and cost
         if cost < self.best_fit:
             self.best_fit = cost
-            self.best_sol = np.array(variables)  
-            
-            gen = self.eval_count // 100
+            self.best_sol = np.array(variables)
+
+        # 4. Buffer per-generation stats; emit when buffer fills one pop_size window
+        self._gen_costs.append(cost)
+        if len(self._gen_costs) >= self.pop_size:
+            gen = self.eval_count // self.pop_size
             self.history.append({
-                "gen": gen,
-                "best": cost,
-                "mean": cost
+                "gen":       gen,
+                "best":      float(self.best_fit),
+                "gen_best":  float(min(self._gen_costs)),
+                "gen_worst": float(max(self._gen_costs)),
+                "mean":      float(sum(self._gen_costs) / len(self._gen_costs)),
             })
-            
+            self._gen_costs = []
+
         return cost
 
 # ── Distance Matrix loading ──────────────────────────────────────────────────
@@ -230,7 +238,7 @@ def run_single_experiment(
 
     linkage_model = gomea.linkage.Custom(file=fos_file_path)
 
-    fitness_inst = TLSFitness(num_genes, max_evals)
+    fitness_inst = TLSFitness(num_genes, max_evals, pop_size)
     fitness_inst.wrapper = wrapper
 
     rvgom = gomea.RealValuedGOMEA(

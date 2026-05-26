@@ -61,12 +61,19 @@ def _on_generation(ga_instance):
     best_cost = -float(solution_fitness)
     pop_fitness = ga_instance.last_generation_fitness
     mean_cost = -float(np.mean(pop_fitness))
+    # PyGAD maximises fitness = -cost, so min fitness = worst cost, max fitness = best cost.
+    gen_best_cost  = -float(np.max(pop_fitness))
+    gen_worst_cost = -float(np.min(pop_fitness))
     # Compute evals in the main process from the generation count.
     # pygad_fitness_func runs in worker subprocesses (macOS spawn), so
     # per-call counting there is invisible to this callback.
     evals = gen * PYGAD_POPULATION_SIZE
     _fitness_history.append({
-        "gen": gen, "best": best_cost, "mean": mean_cost,
+        "gen": gen,
+        "best": best_cost,
+        "gen_best": gen_best_cost,
+        "gen_worst": gen_worst_cost,
+        "mean": mean_cost,
     })
     print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Mean: {mean_cost:.2f} | Evals: {evals}")
     if evals >= MAX_EVALS:

@@ -235,9 +235,21 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         best_fitness = monitor.get_best_fitness()
         best_cost = float(best_fitness.item()) if best_fitness is not None else float("inf")
 
+        # Per-generation pop fitness (best/worst/mean of current population)
+        try:
+            current_fit_np = algorithm.fit.detach().cpu().numpy()
+            gen_best  = float(np.min(current_fit_np))
+            gen_worst = float(np.max(current_fit_np))
+            gen_mean  = float(np.mean(current_fit_np))
+        except Exception:
+            gen_best = gen_worst = gen_mean = float("nan")
+
         history_entry = {
             "gen": gen,
             "best": best_cost,
+            "gen_best": gen_best,
+            "gen_worst": gen_worst,
+            "mean": gen_mean,
             "evals": _num_evals,
         }
         if cr_np is not None:

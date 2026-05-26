@@ -669,7 +669,13 @@ def run_custom_optimizer(
     best_sol, best_fit  = pop[best_i].copy(), float(fit[best_i])
     print(f"Gen 0 | Best: {best_fit:.2f} | Mean: {np.mean(fit):.2f}")
 
-    history = [{"gen": 0, "best": float(best_fit), "mean": float(np.mean(fit))}]
+    history = [{
+        "gen":       0,
+        "best":      float(best_fit),
+        "gen_best":  float(np.min(fit)),
+        "gen_worst": float(np.max(fit)),
+        "mean":      float(np.mean(fit)),
+    }]
 
     # 3. Generational loop ───────────────────────────────────────────────────
     t0 = time.time() 
@@ -753,6 +759,8 @@ def run_custom_optimizer(
         history.append({
             "gen":          gen,
             "best":         float(best_fit),
+            "gen_best":     float(np.min(fit)),
+            "gen_worst":    float(np.max(fit)),
             "mean":         float(np.mean(fit)),
             "mix_improved": mix_improved,
             "mut_improved": mut_improved,
