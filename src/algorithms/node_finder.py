@@ -86,7 +86,8 @@ class LinkageTree:
 
     def find_node_closest_to_size(self, target_size, rng=None):
         """Return the TLS-ID members of a node whose size is closest to
-        *target_size*.  Ties broken uniformly at random.
+        *target_size*.  *target_size* may be a float; the node with the
+        smallest |size - target_size| wins.  Ties broken uniformly at random.
         """
         if rng is None:
             rng = np.random.default_rng()
