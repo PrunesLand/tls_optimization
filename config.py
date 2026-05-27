@@ -1,6 +1,6 @@
 import os
 
-MAX_EVALS = 1000
+MAX_EVALS = 5000
 
 # pygad configuration parameters
 PYGAD_POPULATION_SIZE = 100
