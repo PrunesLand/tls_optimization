@@ -40,6 +40,15 @@ NOVEL_MUTATION = False  # Enable or disable pair-cluster mutation
 NUM_SEEDS_PER_TREE = 5
 SEED_BASE = 42
 
+# DE cluster crossover v4 (annealed best-fit walk)
+# Size scale applied to the target cluster size at the END of the eval
+# budget; it decays from 1.0 (start) to this floor (end). Lower => more
+# aggressive shrink toward single-TLS refinement late in the run.
+CLUSTER_ANNEAL_FLOOR = 0.1
+# Probability the best-fit walk keeps the smaller fitting child at a fork,
+# for composition diversity. Does not change the resulting cluster size.
+CLUSTER_EXPLORE_PROB = 0.1
+
 # Clustering thresholds
 CLUSTER_THRESHOLD_FASTEST = 300
 CLUSTER_THRESHOLD_SHORTEST = 4000

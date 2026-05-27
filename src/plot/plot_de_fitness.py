@@ -8,9 +8,16 @@ solid line down the middle.  This gives the "thick line" look where the
 band thickness is the spread of the population and the centre line is the
 mean.
 
-Covers both algorithms:
+Covers all three algorithms:
   - differential_evolution.json                       (plain SHADE)
   - differential_evolution_cluster_v3_{tree}.json     (cluster crossover v3)
+  - differential_evolution_cluster_v4_{tree}.json     (cluster crossover v4:
+        annealed target size + best-fit walk)
+
+Panels are laid out one metric per row, v3 on the left and v4 on the
+right, so each tree's two crossovers sit side by side; plain SHADE is the
+baseline panel.  (The side-by-side alignment appears once the v4 result
+JSONs exist; missing files are simply skipped.)
 
 Usage:  python src/plot/plot_de_fitness.py
 """
@@ -25,15 +32,23 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 OUT_DIR = ROOT / "src" / "outputs"
 
 # (filename, panel title, colour) — one panel each.
+# Ordered so each metric's v3 (left) and v4 (right) share a row; plain
+# SHADE is the trailing baseline panel.
 RUNS = [
-    ("differential_evolution.json",
-     "SHADE (plain)", "#1f77b4"),
     ("differential_evolution_cluster_v3_shortest.json",
      "Cluster v3 — shortest", "#d62728"),
+    ("differential_evolution_cluster_v4_shortest.json",
+     "Cluster v4 — shortest", "#ff7f0e"),
     ("differential_evolution_cluster_v3_euclidian.json",
      "Cluster v3 — euclidian", "#2ca02c"),
+    ("differential_evolution_cluster_v4_euclidian.json",
+     "Cluster v4 — euclidian", "#17becf"),
     ("differential_evolution_cluster_v3_fastest.json",
      "Cluster v3 — fastest", "#9467bd"),
+    ("differential_evolution_cluster_v4_fastest.json",
+     "Cluster v4 — fastest", "#e377c2"),
+    ("differential_evolution.json",
+     "SHADE (plain)", "#1f77b4"),
 ]
 
 
@@ -86,7 +101,8 @@ def main():
     for ax in axes[len(runs):]:
         ax.set_visible(False)
 
-    fig.suptitle("SHADE fitness per generation — best / worst / mean",
+    fig.suptitle("SHADE fitness per generation — best / worst / mean "
+                 "(cluster v3 vs v4)",
                  fontsize=15, y=0.995)
     fig.tight_layout()
 

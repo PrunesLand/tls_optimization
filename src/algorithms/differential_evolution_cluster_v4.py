@@ -1,0 +1,411 @@
+"""
+Differential Evolution (SHADE) with v4 cluster crossover:
+annealed target size + best-fit walk-decomposition.
+
+Same scaffolding as `differential_evolution_cluster_v3.py`, with two
+changes aimed at late-run convergence:
+
+  (1) ANNEALED TARGET SIZE.  In this SHADE setup CR is empirically frozen
+      near 0.5, so v3's `target = round(CR * num_tls)` sits at ~num_tls/2
+      for the entire run — every trial swaps ~half the network and the
+      operator can never make a small, precise edit.  v4 multiplies the
+      target by a scale that decays from 1.0 -> `_ANNEAL_FLOOR` over the
+      eval budget:
+
+          scale_t  = 1.0 - (1 - _ANNEAL_FLOOR) * (evals / MAX_EVALS)
+          target_i = max(1, round(CR_i * num_tls * scale_t))
+
+      => coarse, network-level swaps early; fine, single-TLS refinement
+      late.  `max(1, ...)` guarantees at least one cluster always crosses
+      (a j_rand-style safeguard against wasted parent-clone evals).
+
+  (2) BEST-FIT WALK.  The crossover hook calls
+      `LinkageTree.find_node_decomposition` from `node_finder_v4`, which
+      keeps the largest child that fits the remainder and descends into
+      the smaller child when neither fits — so the number of TLS actually
+      swapped matches the target and can never overshoot (v3's fair coin
+      could grab a giant sibling and overshoot by up to +11 TLS on the
+      `fastest` tree).
+
+The resulting trial vector copies the genes belonging to *all* selected
+clusters from the mutant vector and inherits the rest from the parent.
+
+Runs 3 experiments, one per Ward distance tree (shortest / euclidian /
+fastest); each uses its own linkage tree for the cluster lookup.
+
+Usage:  python -m src.algorithms.differential_evolution_cluster_v4
+"""
+
+import copy
+import json
+import os
+import sys
+import time
+import traceback
+from multiprocessing import Pool
+from pathlib import Path
+
+import numpy as np
+import torch
+from evox.algorithms import SHADE
+from evox.workflows import StdWorkflow, EvalMonitor
+from evox.core import Problem
+from evox.algorithms.so.de_variants import shade as _shade_module
+
+# Project root must be on sys.path before the first-party imports below.
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+
+from config import (
+    PYGAD_POPULATION_SIZE,
+    MAX_EVALS,
+    NUM_PROCESSORS,
+    BASELINE_TRAFFIC_DATA,
+    CLUSTER_ANNEAL_FLOOR as _ANNEAL_FLOOR,
+    CLUSTER_EXPLORE_PROB as _EXPLORE_PROB,
+)
+from src.sumo_setup.fitness_evaluation import (
+    fitness_function,
+    build_traffic_fitness_wrapper,
+)
+from src.algorithms.node_finder_v4 import LinkageTree
+
+# `_ANNEAL_FLOOR` / `_EXPLORE_PROB` are the v4 crossover knobs (config.py:
+# CLUSTER_ANNEAL_FLOOR / CLUSTER_EXPLORE_PROB).
+
+# ── Module-level state used by the cluster-crossover hook ──────────
+# Populated per-experiment in run_single_de() before any workflow.step()
+# call so the monkey-patched crossover sees the right tree / mapping.
+_linkage_tree   = None  # LinkageTree (v4) for the active experiment
+_tls_to_genes   = None  # dict[tls_id] -> (start, end) gene slice
+_num_tls        = None  # genotype length at the TLS level (36 here)
+_xover_rng      = None  # rng for tiebreaks / exploration in the walk
+
+# Captured per-step for printing / JSON logging
+_last_cr_vect      = None
+_last_target_sizes = None
+_last_actual_sizes = None
+_last_scale        = None
+
+
+def _cluster_binary_crossover(mutation_vector, current_vect, CR_vect):
+    """SHADE-compatible crossover that operates on TLS clusters via the
+    v4 annealed best-fit walk-decomposition.
+
+    Drop-in replacement for `DE_binary_crossover`.  Signature and shapes
+    match exactly so SHADE.step() is otherwise unmodified.
+    """
+    global _last_cr_vect, _last_target_sizes, _last_actual_sizes, _last_scale
+    _last_cr_vect = CR_vect.detach().clone()
+
+    pop_size = CR_vect.shape[0]
+    trial = current_vect.clone()
+
+    # (1) Annealed size scale: 1.0 early -> _ANNEAL_FLOOR late.  _num_evals
+    # holds the budget consumed BEFORE this generation's evaluation.
+    progress = min(1.0, _num_evals / MAX_EVALS) if MAX_EVALS else 0.0
+    scale    = 1.0 - (1.0 - _ANNEAL_FLOOR) * progress
+    _last_scale = scale
+
+    cr_np   = CR_vect.detach().cpu().numpy()
+    targets = np.maximum(1, np.rint(cr_np * _num_tls * scale)).astype(int)
+    actual  = np.empty(pop_size, dtype=int)
+
+    for i in range(pop_size):
+        # (2) Best-fit decomposition (cannot overshoot the target).
+        members = _linkage_tree.find_node_decomposition(
+            int(targets[i]), rng=_xover_rng, explore_prob=_EXPLORE_PROB,
+        )
+        # Translate TLS IDs -> flat gene indices, skipping TLS not in
+        # the gene map (defensive: linkage tree IDs come from the
+        # distance JSON; not all may have phases in baseline_data).
+        gene_idxs = []
+        kept = 0
+        for tls_id in members:
+            if tls_id in _tls_to_genes:
+                s, e = _tls_to_genes[tls_id]
+                gene_idxs.extend(range(s, e))
+                kept += 1
+        actual[i] = kept
+
+        if gene_idxs:
+            idx = torch.tensor(gene_idxs, dtype=torch.long, device=trial.device)
+            trial[i].index_copy_(0, idx, mutation_vector[i].index_select(0, idx))
+
+    _last_target_sizes = targets.tolist()
+    _last_actual_sizes = actual.tolist()
+    return trial
+
+
+# Install the cluster crossover in place of SHADE's per-gene binomial
+# crossover. SHADE.step() resolves this name at runtime, so applying the
+# patch after the imports above is fine.
+_shade_module.DE_binary_crossover = _cluster_binary_crossover
+
+
+# ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────
+_wrapper   = None
+_num_evals = 0
+
+
+def _evaluate_single(vec):
+    try:
+        return float(_wrapper(vec))
+    except Exception as e:
+        print(f"Error evaluating fitness: {e}")
+        return 9999999.0
+
+
+class TLSProblem(Problem):
+    """EvoX problem evaluating TLS solutions via the SUMO wrapper."""
+
+    def __init__(self, wrapper, n_workers=1):
+        super().__init__()
+        self.wrapper = wrapper
+        self.n_workers = n_workers
+
+    def evaluate(self, pop: torch.Tensor) -> torch.Tensor:
+        pop_np = torch.round(pop).cpu().numpy()
+        if self.n_workers > 1:
+            with Pool(processes=self.n_workers) as pool:
+                costs = pool.map(_evaluate_single, [row for row in pop_np])
+        else:
+            costs = [_evaluate_single(row) for row in pop_np]
+        return torch.tensor(costs, dtype=pop.dtype, device=pop.device)
+
+
+# ── Helpers (population init + gene map, mirrors differential_evolution.py)
+
+def init_population(n, num_genes, bounds_lo, bounds_hi, rng):
+    pop = rng.uniform(bounds_lo, bounds_hi, (n, num_genes))
+    return np.round(pop).astype(float)
+
+
+def build_gene_map(baseline_data):
+    tls_to_genes = {}
+    idx = 0
+    baseline = []
+    for tls_id in sorted(baseline_data["tls_data"]):
+        phases = sorted(baseline_data["tls_data"][tls_id])
+        tls_to_genes[tls_id] = (idx, idx + len(phases))
+        for pk in phases:
+            baseline.append(float(baseline_data["tls_data"][tls_id][pk]["duration"]))
+        idx += len(phases)
+    return tls_to_genes, idx, np.array(baseline)
+
+
+# ── Single SHADE-with-cluster-crossover run ────────────────────────
+
+def run_single_de(baseline_data, num_genes, tls_to_genes,
+                  bounds_lo, bounds_hi, out_dir, rng,
+                  tree_name, dist_path):
+    """Run one SHADE experiment whose crossover is the v4 cluster variant."""
+    global _wrapper, _num_evals
+    global _linkage_tree, _tls_to_genes, _num_tls, _xover_rng
+
+    _num_evals = 0
+    fitness_history = []
+
+    # ── Install per-experiment state for the crossover hook ──────
+    _linkage_tree = LinkageTree.from_distance_json(dist_path)
+    _tls_to_genes = tls_to_genes
+    _num_tls      = len(tls_to_genes)
+    _xover_rng    = rng
+
+    print(f"\n{'='*60}")
+    print(f"SHADE (EvoX) | Cluster crossover v4 | Tree: {tree_name} | "
+          f"num_tls={_num_tls} | Pop: {PYGAD_POPULATION_SIZE}")
+    print(f"  anneal_floor={_ANNEAL_FLOOR} | explore_prob={_EXPLORE_PROB}")
+    print(f"{'='*60}")
+
+    n_workers = NUM_PROCESSORS or os.cpu_count() or 1
+
+    initial_pop_np = init_population(
+        PYGAD_POPULATION_SIZE, num_genes, bounds_lo, bounds_hi, rng,
+    )
+
+    lb = torch.tensor(bounds_lo, dtype=torch.float64)
+    ub = torch.tensor(bounds_hi, dtype=torch.float64)
+
+    algorithm = SHADE(pop_size=PYGAD_POPULATION_SIZE, lb=lb, ub=ub)
+    problem   = TLSProblem(wrapper=_wrapper, n_workers=n_workers)
+    monitor   = EvalMonitor(full_fit_history=True, topk=1)
+
+    workflow = StdWorkflow(
+        algorithm=algorithm, problem=problem, monitor=monitor,
+    )
+
+    # Inject our custom initial population (see differential_evolution.py
+    # for the rationale on skipping workflow.init_step()).
+    init_pop_tensor = torch.tensor(initial_pop_np, dtype=torch.float64)
+    algorithm.pop.data.copy_(init_pop_tensor)
+    init_fitness = workflow.algorithm.evaluate(init_pop_tensor)
+    algorithm.fit.data.copy_(init_fitness)
+
+    t0 = time.time()
+    gen = 0
+
+    # Initialization evaluations are not counted against MAX_EVALS;
+    # the budget covers only the generational loop.
+    while _num_evals < MAX_EVALS:
+        workflow.step()
+        _num_evals += PYGAD_POPULATION_SIZE
+        gen += 1
+
+        cr_np = _last_cr_vect.cpu().numpy() if _last_cr_vect is not None else None
+        if cr_np is not None:
+            cr_str = np.array2string(
+                cr_np, precision=3, suppress_small=True, max_line_width=200,
+            )
+            print(f"  CR per individual (gen {gen}): {cr_str}")
+
+        if _last_scale is not None:
+            print(f"  Size scale (gen {gen}): {_last_scale:.3f}")
+
+        if _last_target_sizes is not None:
+            pairs = " ".join(
+                f"{t}->{a}" for t, a in zip(_last_target_sizes, _last_actual_sizes)
+            )
+            print(f"  Cluster size target->actual (gen {gen}): [{pairs}]")
+
+        best_fitness = monitor.get_best_fitness()
+        best_cost = float(best_fitness.item()) if best_fitness is not None else float("inf")
+
+        # Per-generation pop fitness (best/worst/mean of current population)
+        try:
+            current_fit_np = algorithm.fit.detach().cpu().numpy()
+            gen_best  = float(np.min(current_fit_np))
+            gen_worst = float(np.max(current_fit_np))
+            gen_mean  = float(np.mean(current_fit_np))
+        except Exception:
+            gen_best = gen_worst = gen_mean = float("nan")
+
+        history_entry = {
+            "gen": gen,
+            "best": best_cost,
+            "gen_best": gen_best,
+            "gen_worst": gen_worst,
+            "mean": gen_mean,
+            "evals": _num_evals,
+        }
+        if cr_np is not None:
+            history_entry["cr"] = cr_np.tolist()
+        if _last_scale is not None:
+            history_entry["size_scale"] = _last_scale
+        if _last_target_sizes is not None:
+            history_entry["target_sizes"] = list(_last_target_sizes)
+            history_entry["actual_sizes"] = list(_last_actual_sizes)
+        fitness_history.append(history_entry)
+
+        print(f"Gen {gen:3d} | Best: {best_cost:.2f} | Evals: {_num_evals}")
+
+    elapsed = time.time() - t0
+
+    best_solution = monitor.get_best_solution()
+    best_vec = (
+        torch.round(best_solution).cpu().numpy()
+        if best_solution is not None else initial_pop_np[0]
+    )
+    best_fitness_final = monitor.get_best_fitness()
+    best_cost = float(best_fitness_final.item()) if best_fitness_final is not None else float("inf")
+
+    print(f"Done in {elapsed:.1f}s | Final best: {best_cost:.2f} | Evals: {_num_evals}")
+
+    # Reconstruct full TLS JSON from the flat gene vector
+    best_json = copy.deepcopy(baseline_data)
+    for tls_id in sorted(best_json["tls_data"]):
+        if tls_id not in tls_to_genes:
+            continue
+        s, e = tls_to_genes[tls_id]
+        raw = best_vec[s:e]
+        keys = sorted(best_json["tls_data"][tls_id])
+        n = len(keys)
+        total = sum(raw)
+        if total <= 0:
+            dur = [90 // n] * n
+            dur[-1] += 90 - sum(dur)
+        else:
+            dur = [max(1, int(round(d * 90 / total))) for d in raw]
+            diff = 90 - sum(dur)
+            if diff:
+                dur[int(np.argmax(dur))] += diff
+        for i, pk in enumerate(keys):
+            best_json["tls_data"][tls_id][pk]["duration"] = int(dur[i])
+
+    best_json["composite_cost"] = best_cost
+
+    results = {
+        "best_configuration": best_json,
+        "best_fitness": best_cost,
+        "fitness_history": fitness_history,
+        "time_s": round(elapsed, 2),
+        "algorithm": "shade_evox_cluster_crossover_v4",
+        "strategy": "random",
+        "pop_size": PYGAD_POPULATION_SIZE,
+        "integrality": True,
+        "num_genes": num_genes,
+        "num_tls": _num_tls,
+        "total_evals": _num_evals,
+        "generations_completed": gen,
+        "tree": tree_name,
+        "anneal_floor": _ANNEAL_FLOOR,
+        "explore_prob": _EXPLORE_PROB,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+    out_file = out_dir / f"differential_evolution_cluster_v4_{tree_name}.json"
+    with open(out_file, "w") as f:
+        json.dump(results, f, indent=4)
+    print(f"Saved → {out_file}")
+
+    return best_cost, elapsed
+
+
+def run_all_experiments():
+    """Always runs three experiments, one per linkage tree."""
+    global _wrapper
+
+    with open(BASELINE_TRAFFIC_DATA, "r") as f:
+        baseline_data = json.load(f)
+
+    _wrapper, num_genes, bounds_lo, bounds_hi, _ = build_traffic_fitness_wrapper(
+        baseline_data=baseline_data, fitness_function=fitness_function,
+    )
+    tls_to_genes, _, _ = build_gene_map(baseline_data)
+
+    root = Path(__file__).resolve().parent.parent.parent
+    out_dir = root / "src" / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(42)
+
+    trees = {
+        "shortest":  out_dir / "tls_distances_shortest.json",
+        "euclidian": out_dir / "tls_distances_euclidian.json",
+        "fastest":   out_dir / "tls_distances_fastest.json",
+    }
+    summary = {}
+
+    for tree_name, dist_path in trees.items():
+        try:
+            best_cost, elapsed = run_single_de(
+                baseline_data, num_genes, tls_to_genes,
+                bounds_lo, bounds_hi, out_dir, rng,
+                tree_name=tree_name, dist_path=str(dist_path),
+            )
+            summary[tree_name] = {"best": best_cost, "time_s": elapsed}
+        except Exception as e:
+            print(f"ERROR [{tree_name}]: {e}")
+            traceback.print_exc()
+            summary[tree_name] = {"error": str(e)}
+
+    print(f"\n{'Tree':<12} {'Best':>12} {'Time':>8}")
+    print("─" * 34)
+    for tree_name, info in summary.items():
+        if "error" in info:
+            print(f"{tree_name:<12} {'ERROR':>12}")
+        else:
+            print(f"{tree_name:<12} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
+
+
+if __name__ == "__main__":
+    run_all_experiments()
