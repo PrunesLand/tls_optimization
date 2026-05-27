@@ -22,21 +22,11 @@ import libsumo as traci
 
 # Add project root to sys.path to import config
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import SUMO_ARGS, BASELINE_TRAFFIC_DATA
+from config import SUMO_ARGS, BASELINE_TRAFFIC_DATA, PHASE_BOUNDS, CYCLE_LENGTH
 
 with open(BASELINE_TRAFFIC_DATA, 'r') as f:
     BASELINE_DATA = json.load(f)
 
-
-# ── Constants for phase-type bounds ──────────────────────────────────────────
-
-CYCLE_LENGTH = 90
-
-PHASE_BOUNDS = {
-    "green":  (24, 85),
-    "yellow": ( 3,  6),
-    "red":    ( 5, 85),
-}
 
 
 # ── SUMO fitness function ───────────────────────────────────────────────────
