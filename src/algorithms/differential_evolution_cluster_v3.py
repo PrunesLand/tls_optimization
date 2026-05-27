@@ -68,12 +68,12 @@ def _cluster_binary_crossover(mutation_vector, current_vect, CR_vect):
     trial = current_vect.clone()
 
     cr_np   = CR_vect.detach().cpu().numpy()
-    targets = cr_np * _num_tls
+    targets = np.rint(cr_np * _num_tls).astype(int)
     actual  = np.empty(pop_size, dtype=int)
 
     for i in range(pop_size):
         members = _linkage_tree.find_node_decomposition(
-            float(targets[i]), rng=_xover_rng,
+            int(targets[i]), rng=_xover_rng,
         )
         # Translate TLS IDs -> flat gene indices, skipping TLS not in
         # the gene map (defensive: linkage tree IDs come from the
