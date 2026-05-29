@@ -1,6 +1,8 @@
 from config import CLUSTER_THRESHOLD_FASTEST
 from config import CLUSTER_THRESHOLD_SHORTEST
 from config import CLUSTER_THRESHOLD_EUCLIDIAN
+# Random distances are uniform in [0, 1); 0.5 splits near the median.
+CLUSTER_THRESHOLD_RANDOM = 0.5
 import json
 import numpy as np
 from pathlib import Path
@@ -145,17 +147,55 @@ def plot_euclidean_dendrogram(filepath, out_dir):
     plt.close()
     print(f"  Saved dendrograms for {filepath.stem}")
 
+def plot_random_dendrogram(filepath, out_dir):
+    print(f"Processing {filepath.name}...")
+    ids, condensed = load_matrix(filepath)
+    Z = linkage(condensed, method='ward')
+
+    # --- Full Dendrogram ---
+    plt.figure(figsize=(14, 8))
+    dendrogram(Z, labels=ids, leaf_rotation=90, leaf_font_size=8)
+    plt.title("Random Distance ([0, 1)) - Full")
+    plt.xlabel("Traffic Light ID")
+    plt.ylabel("Distance")
+    max_y_full = float(Z[:, 2].max()) * 1.05
+    plt.ylim(0, max_y_full)
+    ticks_full = np.linspace(0, max_y_full, 6)
+    plt.yticks(ticks_full, [f"{t:.2f}" for t in ticks_full])
+    plt.tight_layout()
+    out_png_full = out_dir / "linkage_dendrogram_random.png"
+    plt.savefig(out_png_full, dpi=300)
+    plt.close()
+
+    # --- Threshold Dendrogram ---
+    plt.figure(figsize=(14, 8))
+    dendrogram(Z, labels=ids, leaf_rotation=75, leaf_font_size=8, color_threshold=CLUSTER_THRESHOLD_RANDOM, above_threshold_color='none')
+    plt.title("Random Distance ([0, 1)) - Threshold")
+    plt.xlabel("Traffic Light ID")
+    plt.ylabel("Distance")
+    max_y = CLUSTER_THRESHOLD_RANDOM * 1.2
+    plt.ylim(0, max_y)
+    ticks = np.linspace(0, max_y, 8)
+    plt.yticks(ticks, [f"{t:.2f}" for t in ticks])
+    plt.tight_layout()
+    out_png_thresh = out_dir / "linkage_dendrogram_random_threshold.png"
+    plt.savefig(out_png_thresh, dpi=300)
+    plt.close()
+    print(f"  Saved dendrograms for {filepath.stem}")
+
 def main():
     project_root = Path(__file__).resolve().parent.parent.parent
     out_dir = project_root / "src" / "outputs"
-    
+
     fastest_file = out_dir / "tls_distances_fastest.json"
     shortest_file = out_dir / "tls_distances_shortest.json"
     euclidean_file = out_dir / "tls_distances_euclidian.json"
+    random_file = out_dir / "tls_distance_random.json"
 
     plot_fastest_dendrogram(fastest_file, out_dir)
     plot_shortest_dendrogram(shortest_file, out_dir)
     plot_euclidean_dendrogram(euclidean_file, out_dir)
+    plot_random_dendrogram(random_file, out_dir)
 
 if __name__ == "__main__":
     main()
