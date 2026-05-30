@@ -113,7 +113,7 @@ from src.sumo_setup.fitness_evaluation import (
     fitness_function,
     build_traffic_fitness_wrapper,
 )
-from src.algorithms.node_finder import LinkageTree
+from src.novel.node_finder import LinkageTree
 
 
 # ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────

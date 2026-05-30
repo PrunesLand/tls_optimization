@@ -7,7 +7,7 @@ with parallel fitness evaluation via SUMO.
 
 When config.NOVEL_MUTATION is True, the end of each SHADE generation
 applies a pair-cluster mutation (borrowed from
-src.algorithms.custom_optimizer) to a MUTATION_RATE fraction of the
+src.novel.pairwise_mutation) to a MUTATION_RATE fraction of the
 population.  Pair clusters are derived from the Ward linkage tree built
 on each distance matrix (shortest / euclidian / fastest).  Mutants are
 accepted greedily — only when they improve on their parent's fitness —
@@ -59,7 +59,6 @@ from config import (
     MAX_EVALS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
-    GENE_LOW, GENE_HIGH,
     MUTATION_RATE,
     NOVEL_MUTATION,
     CLUSTER_THRESHOLD_FASTEST,
@@ -70,10 +69,8 @@ from src.sumo_setup.fitness_evaluation import (
     fitness_function,
     build_traffic_fitness_wrapper,
 )
-from src.algorithms.custom_optimizer import (
-    build_all_tree_masks,
-    mutate_pair_cluster,
-)
+from src.novel.linkage_tree import build_all_tree_masks
+from src.novel.pairwise_mutation import mutate_pair_cluster, build_phase_split
 
 THRESHOLDS = {
     "shortest":  CLUSTER_THRESHOLD_SHORTEST,
@@ -190,12 +187,16 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         _, pair_clusters, _ = build_all_tree_masks(dist_path, threshold)
         valid_pairs = [(a, b) for a, b in pair_clusters
                        if a in tls_to_genes and b in tls_to_genes]
+        # Per-TLS green/red/yellow gene-index split that the pair operator
+        # needs (green grown, red pinned, yellow frozen).
+        phase_split = build_phase_split(baseline_data, tls_to_genes)
         print(f"Pair-mutation: ENABLED — {len(valid_pairs)} 2-TLS pairs")
     else:
         threshold = None
         print(f"SHADE (EvoX) | Random init | Pop: {PYGAD_POPULATION_SIZE}")
         print(f"{'='*60}")
         valid_pairs = []
+        phase_split = {}
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
@@ -275,7 +276,8 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
                 mutants_np = np.stack([
                     np.clip(
                         np.round(mutate_pair_cluster(
-                            pop_np[i], valid_pairs, tls_to_genes, rng
+                            pop_np[i], valid_pairs, tls_to_genes,
+                            phase_split, rng, bounds_hi,
                         )),
                         bounds_lo, bounds_hi,
                     )

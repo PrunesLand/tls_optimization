@@ -72,6 +72,10 @@ def _cluster_binary_crossover(mutation_vector, current_vect, CR_vect):
     actual  = np.empty(pop_size, dtype=int)
 
     for i in range(pop_size):
+        # with some probability, perform pair wise mutation.
+        #find a 2 element mask
+        # define the downstream (we define by 50/50)
+        # adjust only the second
         members = _linkage_tree.find_node_decomposition(
             int(targets[i]), rng=_xover_rng,
         )
@@ -111,7 +115,7 @@ from src.sumo_setup.fitness_evaluation import (
     fitness_function,
     build_traffic_fitness_wrapper,
 )
-from src.algorithms.node_finder_v3 import LinkageTree
+from src.novel.node_finder_v3 import LinkageTree
 
 
 # ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────

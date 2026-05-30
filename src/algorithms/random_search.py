@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, GENE_LOW, GENE_HIGH
+    MAX_EVALS, GENE_LOW
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -22,22 +22,28 @@ def _eval_worker(args):
     return sol_idx, rep, fitness, elapsed
 
 
-def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng):
-    """Create initial population: 'random', 'baseline', or 'mixed'."""
+def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng, ub):
+    """Create initial population: 'random', 'baseline', or 'mixed'.
+
+    ``ub`` is the per-gene upper bound (dynamic per-TLS green/red ceiling).
+    """
+    # Per-gene lower bound: yellow phases have ub=6 < GENE_LOW, so cap the
+    # lower at ub to keep uniform()/clip() valid (yellow collapses to 6).
+    lo = np.minimum(GENE_LOW, ub)
     if strategy == "random":
-        return rng.uniform(GENE_LOW, GENE_HIGH, (n, num_genes))
+        return rng.uniform(lo, ub, (n, num_genes))
 
     elif strategy == "baseline":
         pop = np.tile(baseline_vec, (n, 1))
         pop += rng.normal(0, noise_std, pop.shape) * pop
-        return np.clip(pop, GENE_LOW, GENE_HIGH)
+        return np.clip(pop, lo, ub)
 
     elif strategy == "mixed":
         half = n // 2
-        rand = rng.uniform(GENE_LOW, GENE_HIGH, (half, num_genes))
+        rand = rng.uniform(lo, ub, (half, num_genes))
         base = np.tile(baseline_vec, (n - half, 1))
         base += rng.normal(0, noise_std, base.shape) * base
-        return np.vstack([rand, np.clip(base, GENE_LOW, GENE_HIGH)])
+        return np.vstack([rand, np.clip(base, lo, ub)])
 
     raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -58,13 +64,13 @@ def build_gene_map(baseline_data):
     return tls_to_genes, idx, np.array(baseline)
 
 
-def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
+def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng):
     """Run a single Random Search experiment block."""
     print(f"\n{'='*60}")
     print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {MAX_EVALS}")
     print(f"{'='*60}")
 
-    solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
+    solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng, ub)
     
     tasks = []
     for i, solution in enumerate(solutions):
@@ -148,7 +154,7 @@ def run_all_experiments():
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
 
-    wrapper, num_genes, _, _, _ = build_traffic_fitness_wrapper(
+    wrapper, num_genes, _, ub, _ = build_traffic_fitness_wrapper(
         baseline_data=baseline_data,
         fitness_function=_traffic_fitness,
     )
@@ -170,7 +176,7 @@ def run_all_experiments():
             label = f"{tree_name}_{strat}"
             try:
                 best_cost, elapsed = run_single_search(
-                    tree_name, strat, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, out_dir, rng
+                    tree_name, strat, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng
                 )
                 summary[label] = {"best": best_cost, "time_s": elapsed}
             except Exception as e:
