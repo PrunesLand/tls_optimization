@@ -61,6 +61,11 @@ MUTATION_RATE = 0.15
 
 CYCLE_LENGTH = 90
 
+# Only TLSs whose phase count is in this set are optimised. Other TLSs are
+# filtered out at baseline-JSON generation time (see src/sumo_setup/generation.py)
+# and keep whatever durations the SUMO network file holds during simulation.
+OPTIMIZE_PHASE_COUNTS = {3, 4}
+
 PHASE_BOUNDS = {
     "green":  (24, 82),
     "yellow": ( 3,  6),
