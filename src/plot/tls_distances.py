@@ -67,7 +67,7 @@ def random_distance(net, node_a, node_b) -> float:
 
 # ---------- Variant configuration ----------
 # Each variant preserves the JSON schema of its original file so downstream
-# consumers (node_finder, dendrograms, optimizers) keep working unchanged.
+# consumers (src/novel/node_finder, dendrograms, optimizers) keep working unchanged.
 
 VARIANTS = {
     "euclidian": {
