@@ -1,7 +1,7 @@
 """
 v3 linkage-tree node picker for TLS clustering.
 
-Subclasses the base `LinkageTree` from `src.algorithms.node_finder` and
+Subclasses the base `LinkageTree` from `src.novel.node_finder` and
 adds `find_node_decomposition`, which assembles a TLS-ID set by walking
 the Ward-linkage tree rather than returning a single nearest-size node.
 
@@ -15,14 +15,14 @@ Algorithm:
   3. Stop when remainder reaches 0, when a leaf is hit, or when a pick
      overshoots (remainder < 0).
 
-Usage:  python -m src.algorithms.node_finder_v3
+Usage:  python -m src.novel.node_finder_v3
 """
 
 from pathlib import Path
 
 import numpy as np
 
-from src.algorithms.node_finder import LinkageTree as _BaseLinkageTree
+from src.novel.node_finder import LinkageTree as _BaseLinkageTree
 
 
 class LinkageTree(_BaseLinkageTree):

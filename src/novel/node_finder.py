@@ -12,7 +12,7 @@ which returns the TLS-ID members of a node whose size is closest to
 lookups always succeed exactly.  Ties on absolute size-difference are
 broken uniformly at random.
 
-Usage:  python -m src.algorithms.linkage_tree
+Usage:  python -m src.novel.node_finder
 """
 
 import json
