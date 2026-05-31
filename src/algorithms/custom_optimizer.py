@@ -46,7 +46,7 @@ from config import (
     MAX_EVALS, BASELINE_TRAFFIC_DATA, NUM_PROCESSORS,
     POPULATION_SIZE, NUM_GENERATIONS,
     GAUSSIAN_NOISE, NOVEL_MUTATION,
-    GENE_LOW, MUTATION_RATE,
+    GREEN_FLOOR, MUTATION_RATE,
 )
 import json, copy, time, os, sys
 import numpy as np
@@ -111,9 +111,9 @@ def init_population(
 
     ``ub`` is the per-gene upper bound (dynamic per-TLS green/red ceiling).
     """
-    # Per-gene lower bound: yellow phases have ub=6 < GENE_LOW, so cap the
+    # Per-gene lower bound: yellow phases have ub=6 < GREEN_FLOOR, so cap the
     # lower at ub to keep uniform()/clip() valid (yellow collapses to 6).
-    lo = np.minimum(GENE_LOW, ub)
+    lo = np.minimum(GREEN_FLOOR, ub)
     if strategy == "random":
         return rng.uniform(lo, ub, (n, num_genes))
 

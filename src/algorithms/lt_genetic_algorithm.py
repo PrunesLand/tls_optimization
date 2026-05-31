@@ -33,7 +33,7 @@ from config import (
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
     GAUSSIAN_NOISE,
-    GENE_LOW,
+    GREEN_FLOOR,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function,
@@ -85,9 +85,9 @@ def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng, ub):
 
     ``ub`` is the per-gene upper bound (dynamic per-TLS green/red ceiling).
     """
-    # Per-gene lower bound: yellow phases have ub=6 < GENE_LOW, so cap the
+    # Per-gene lower bound: yellow phases have ub=6 < GREEN_FLOOR, so cap the
     # lower at ub to keep uniform()/clip() valid (yellow collapses to 6).
-    lo = np.minimum(GENE_LOW, ub)
+    lo = np.minimum(GREEN_FLOOR, ub)
     if strategy == "random":
         return rng.uniform(lo, ub, (n, num_genes))
 
@@ -136,7 +136,7 @@ def run_single_ga(tree_name, strategy, baseline_data, num_genes, baseline_vec, t
     # Initialize population using the same logic as LT-GOMEA
     initial_pop = init_population(strategy, PYGAD_POPULATION_SIZE, num_genes, baseline_vec, GAUSSIAN_NOISE, rng, ub)
 
-    gene_space = [{"low": min(GENE_LOW, float(ub[i])), "high": float(ub[i])}
+    gene_space = [{"low": min(GREEN_FLOOR, float(ub[i])), "high": float(ub[i])}
                   for i in range(num_genes)]
 
     ga_instance = pygad.GA(

@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, GENE_LOW
+    MAX_EVALS, GREEN_FLOOR
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -27,9 +27,9 @@ def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng, ub):
 
     ``ub`` is the per-gene upper bound (dynamic per-TLS green/red ceiling).
     """
-    # Per-gene lower bound: yellow phases have ub=6 < GENE_LOW, so cap the
+    # Per-gene lower bound: yellow phases have ub=6 < GREEN_FLOOR, so cap the
     # lower at ub to keep uniform()/clip() valid (yellow collapses to 6).
-    lo = np.minimum(GENE_LOW, ub)
+    lo = np.minimum(GREEN_FLOOR, ub)
     if strategy == "random":
         return rng.uniform(lo, ub, (n, num_genes))
 

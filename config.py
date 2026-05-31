@@ -33,21 +33,8 @@ NUM_GENERATIONS = MAX_EVALS // POPULATION_SIZE
 GAUSSIAN_NOISE = 0.10  # 10% Gaussian perturbation for baseline-perturbed init
 NOVEL_MUTATION = False  # Enable or disable pair-cluster mutation
 
-# Multi-seed best-of-N for GOMEA (custom_optimizer_pygad).
-# GOMEA's per-solution callback prevents within-run parallelism, so extra
-# cores are absorbed by running multiple seeds per tree in parallel and
-# keeping best-of-N. Total jobs = NUM_SEEDS_PER_TREE * 3 trees.
-NUM_SEEDS_PER_TREE = 5
+# Base random seed (used by distance-matrix plotting / reproducible runs).
 SEED_BASE = 42
-
-# DE cluster crossover v4 (annealed best-fit walk)
-# Size scale applied to the target cluster size at the END of the eval
-# budget; it decays from 1.0 (start) to this floor (end). Lower => more
-# aggressive shrink toward single-TLS refinement late in the run.
-CLUSTER_ANNEAL_FLOOR = 0.1
-# Probability the best-fit walk keeps the smaller fitting child at a fork,
-# for composition diversity. Does not change the resulting cluster size.
-CLUSTER_EXPLORE_PROB = 0.1
 
 # Clustering thresholds
 CLUSTER_THRESHOLD_FASTEST = 300
@@ -55,8 +42,14 @@ CLUSTER_THRESHOLD_SHORTEST = 4000
 CLUSTER_THRESHOLD_EUCLIDIAN = 3500
 
 # Custom Optimizer  Bounds and Mutation
-GENE_LOW = 24.0
-GENE_HIGH = 82.0
+# Per-type phase-duration floors (minimums within the fixed cycle). Green/red
+# ceilings are no longer static: they come from the dynamic per-TLS
+# phase_upper_bounds in fitness_evaluation.py.
+GREEN_FLOOR  = 24.0   # green phase minimum
+RED_FLOOR    = 5.0    # red phase minimum
+# Yellow phases are frozen to a fixed band (both bounds still used to clamp).
+YELLOW_FLOOR = 3.0
+YELLOW_CEIL  = 6.0
 MUTATION_RATE = 0.15
 
 CYCLE_LENGTH = 90
@@ -65,9 +58,3 @@ CYCLE_LENGTH = 90
 # filtered out at baseline-JSON generation time (see src/sumo_setup/generation.py)
 # and keep whatever durations the SUMO network file holds during simulation.
 OPTIMIZE_PHASE_COUNTS = {3, 4}
-
-PHASE_BOUNDS = {
-    "green":  (24, 82),
-    "yellow": ( 3,  6),
-    "red":    ( 5, 63),
-}

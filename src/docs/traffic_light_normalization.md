@@ -26,21 +26,23 @@ After the phase-count filter in [generation.py](../sumo_setup/generation.py) (on
 
 ### Per-phase bounds
 
-From `PHASE_BOUNDS` in [config.py](../../config.py):
+Floors come from the per-type constants in [config.py](../../config.py)
+(`GREEN_FLOOR`, `RED_FLOOR`, `YELLOW_FLOOR`/`YELLOW_CEIL`). Only yellow has a
+static ceiling; green/red ceilings are dynamic (below).
 
 | Phase type | Min | Max |
 |---|---:|---:|
-| `green` | 24 | 82 |
+| `green` | 24 | dynamic |
 | `yellow` | 3 | 6 |
-| `red` | 5 | 63 |
+| `red` | 5 | dynamic |
 
 ### Dynamic per-TLS upper bound
 
-The `Max` column above is a static per-type ceiling, but in a fixed
-`CYCLE_LENGTH = 90` s cycle a green (or red) phase can never be so long that
-there is no room left for the (frozen) yellows plus a legal minimum for every
-other non-yellow phase. So each TLS gets its own per-phase ceiling, computed
-once at baseline-load time by `phase_upper_bounds` in
+Green and red have **no static ceiling**: in a fixed `CYCLE_LENGTH = 90` s
+cycle a green (or red) phase can never be so long that there is no room left
+for the (frozen) yellows plus a legal minimum for every other non-yellow phase.
+So each TLS gets its own per-phase ceiling, computed once at baseline-load time
+by `phase_upper_bounds` in
 [fitness_evaluation.py](../sumo_setup/fitness_evaluation.py):
 
 ```
@@ -48,8 +50,9 @@ ceiling(phase_j) = CYCLE_LENGTH − Σ(yellow durations)
                                 − Σ(min of every OTHER non-yellow phase)
 ```
 
-where each non-yellow min comes from `PHASE_BOUNDS[ptype][0]` (green=24,
-red=5). Yellow phases keep their static `[3, 6]` bound.
+where each non-yellow min comes from `PHASE_FLOOR[ptype]` (green=24,
+red=5). Yellow phases keep their static `[YELLOW_FLOOR, YELLOW_CEIL]` =
+`[3, 6]` bound.
 
 | Shape | Yellow | Green ceiling | Red ceiling |
 |---|---:|---:|---:|
@@ -60,8 +63,9 @@ red=5). Yellow phases keep their static `[3, 6]` bound.
 This per-gene ceiling array (`ub`) is the single source of truth: it is
 returned by `build_traffic_fitness_wrapper`, fed into `normalize_to_cycle`'s
 clamp, and used as the per-gene sampling/mutation upper bound by every
-algorithm. Scalar-`GENE_LOW` samplers cap their lower bound at `min(GENE_LOW,
-ub)` so a yellow gene (ceiling 6) stays a valid `uniform`/`gene_space` range.
+algorithm. Scalar-`GREEN_FLOOR` samplers cap their lower bound at
+`min(GREEN_FLOOR, ub)` so a yellow gene (ceiling 6) stays a valid
+`uniform`/`gene_space` range.
 
 ### Phase-type classification
 
@@ -91,9 +95,8 @@ Both call sites use the same function with the same per-TLS phase types, so **th
 ### Algorithm
 
 ```
-1. Clamp each phase's raw value to min(PHASE_BOUNDS hi, dynamic ceiling).
-   The per-TLS dynamic ceiling (above) tightens green/red; for yellow the
-   PHASE_BOUNDS max (6) always wins.
+1. Clamp each phase's raw value to its floor and ceiling. Green/red ceilings
+   are the per-TLS dynamic ceiling (above); yellow's ceiling is YELLOW_CEIL (6).
 2. Compute remainder = CYCLE_LENGTH - sum(clamped).
 3. If remainder != 0:
      a. Among green/red phases, pick the one with the SMALLEST current value.
@@ -179,7 +182,7 @@ its gene positions:
 | Role | Phases | What the operator does |
 |---|---|---|
 | **green** | green phases | grown (re-sampled to a chosen budget) |
-| **red** | red phases | pinned at their minimum (`PHASE_BOUNDS["red"][0] = 5`) |
+| **red** | red phases | pinned at their minimum (`RED_FLOOR = 5`) |
 | **yellow** | yellow phases | frozen — never written |
 
 For our two shapes:
@@ -201,9 +204,9 @@ For our two shapes:
        max_sum2 = CYCLE_LENGTH − Σ(second's yellows) − red_min × (second's red count)
 5. If min_sum2 < max_sum2 (feasible):
      a. Sample target2 ~ U(min_sum2, max_sum2).
-     b. Draw a raw proportion per green phase from U(GENE_LOW, ub_green),
+     b. Draw a raw proportion per green phase from U(GREEN_FLOOR, ub_green),
         where ub_green is the second TLS's per-green dynamic ceilings.
-     c. Scale them so they sum to target2, then clip to [GENE_LOW, ub_green].
+     c. Scale them so they sum to target2, then clip to [GREEN_FLOOR, ub_green].
      d. If clipping shrinks the sum below min_sum2, redistribute the deficit
         proportionally across greens with headroom (repeat until satisfied
         or every green sits at its ceiling).

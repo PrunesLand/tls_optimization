@@ -22,7 +22,7 @@ import numpy as np
 # Project root on sys.path so ``config`` / ``src...`` imports resolve when this
 # module is loaded from anywhere.
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import GENE_LOW, CYCLE_LENGTH, PHASE_BOUNDS
+from config import GREEN_FLOOR, CYCLE_LENGTH, RED_FLOOR
 from src.sumo_setup.fitness_evaluation import phase_type
 
 
@@ -79,7 +79,7 @@ def mutate_pair_cluster(
     Novel pair-cluster mutation — grows the second TLS's **green** time.
 
     Yellow phases are frozen and red phases are pinned at their minimum
-    (``PHASE_BOUNDS["red"][0]``); only green phases are sampled.  The second
+    (``RED_FLOOR``); only green phases are sampled.  The second
     TLS is given a green budget strictly larger than the first's, capped at
     the most green the cycle allows once the frozen yellows and a minimum red
     are reserved::
@@ -149,7 +149,7 @@ def mutate_pair_cluster(
 
     # ── Step 4: green budget for the second TLS ─────────────────────────
     #   max_green2 = cycle − frozen yellows − reserved minimum red.
-    red_min     = float(PHASE_BOUNDS["red"][0])
+    red_min     = float(RED_FLOOR)
     yellow_sum2 = float(sol[yellow2].sum()) if yellow2.size else 0.0
     max_sum2    = float(CYCLE_LENGTH) - yellow_sum2 - red_min * red2.size
     min_sum2    = sum1 + 1.0          # strictly greener than the first TLS
@@ -159,11 +159,11 @@ def mutate_pair_cluster(
         target2 = float(rng.uniform(min_sum2, max_sum2))
 
         # Draw random proportions and scale to the green budget
-        raw    = rng.uniform(GENE_LOW, ub_green, ng)
+        raw    = rng.uniform(GREEN_FLOOR, ub_green, ng)
         greens = raw / raw.sum() * target2
-        greens = np.clip(greens, GENE_LOW, ub_green)
+        greens = np.clip(greens, GREEN_FLOOR, ub_green)
 
-        # ── Hard enforcement: GENE_LOW clipping can shrink the sum below the
+        # ── Hard enforcement: GREEN_FLOOR clipping can shrink the sum below the
         #   floor.  Raise greens with headroom until the floor is met or every
         #   green sits at its ceiling.
         deficit = min_sum2 - float(greens.sum())
@@ -176,7 +176,7 @@ def mutate_pair_cluster(
 
             boost   = np.minimum(headroom, headroom / total_headroom * deficit)
             greens += boost
-            greens  = np.clip(greens, GENE_LOW, ub_green)
+            greens  = np.clip(greens, GREEN_FLOOR, ub_green)
             deficit = min_sum2 - float(greens.sum())
 
     else:
@@ -319,7 +319,7 @@ def mutate_tree_walk(
           always included if it is a direct leaf child.  Pair sub-clusters
           encountered during traversal are skipped.
     4. Each collected TLS has its phase-duration genes re-sampled uniformly
-       from [GENE_LOW, ub] (per-gene dynamic ceiling).
+       from [GREEN_FLOOR, ub] (per-gene dynamic ceiling).
 
     Example
     -------
@@ -364,7 +364,7 @@ def mutate_tree_walk(
         meta    = phase_split.get(selected_tls)
         mutable = meta["mutable"] if meta is not None else np.empty(0, dtype=int)
         if mutable.size:
-            new_sol[mutable] = rng.uniform(GENE_LOW, ub[mutable], mutable.size)
+            new_sol[mutable] = rng.uniform(GREEN_FLOOR, ub[mutable], mutable.size)
         return new_sol
 
     containing_info = tree_structure[containing_node]
@@ -387,6 +387,6 @@ def mutate_tree_walk(
         meta    = phase_split.get(tls_id)
         mutable = meta["mutable"] if meta is not None else np.empty(0, dtype=int)
         if mutable.size:
-            new_sol[mutable] = rng.uniform(GENE_LOW, ub[mutable], mutable.size)
+            new_sol[mutable] = rng.uniform(GREEN_FLOOR, ub[mutable], mutable.size)
 
     return new_sol
