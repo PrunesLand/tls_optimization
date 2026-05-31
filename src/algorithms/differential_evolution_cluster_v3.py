@@ -19,8 +19,8 @@ is decomposed by walking the Ward linkage tree:
 The resulting trial vector copies the genes belonging to *all* selected
 clusters from the mutant vector and inherits the rest from the parent.
 
-Runs 3 experiments, one per Ward distance tree (shortest / euclidian /
-fastest); each uses its own linkage tree for the cluster lookup.
+Runs 4 experiments, one per Ward distance tree (shortest / euclidian /
+fastest / random); each uses its own linkage tree for the cluster lookup.
 
 Usage:  python -m src.algorithms.differential_evolution_cluster_v3
 """
@@ -48,6 +48,12 @@ _tls_to_genes   = None  # dict[tls_id] -> (start, end) gene slice
 _num_tls        = None  # genotype length at the TLS level (36 here)
 _xover_rng      = None  # rng for tiebreaks / 50-50 picks in the walk
 
+# ── Step-pairwise-mutation state (only used when SHADE_PAIRWISE_MUTATION) ──
+_pair_clusters  = None  # list[(tls_a, tls_b)] size-2 Ward clusters
+_phase_split    = None  # dict[tls_id] -> {green/red/yellow/mutable: indices}
+_lb_np          = None  # per-gene lower bounds as numpy
+_ub_np          = None  # per-gene dynamic upper bounds as numpy
+
 # Captured per-step for printing / JSON logging
 _last_cr_vect      = None
 _last_target_sizes = None
@@ -72,10 +78,23 @@ def _cluster_binary_crossover(mutation_vector, current_vect, CR_vect):
     actual  = np.empty(pop_size, dtype=int)
 
     for i in range(pop_size):
-        # with some probability, perform pair wise mutation.
-        #find a 2 element mask
-        # define the downstream (we define by 50/50)
-        # adjust only the second
+        # ── Step-pairwise-mutation (augment-on-top, not separately evaluated) ──
+        # With probability MUTATION_RATE, grow the "second" TLS of a random
+        # size-2 Ward cluster to (first_green_sum + STEP_SIZE).  Applied to the
+        # trial row BEFORE the decomposition copy below, so this individual's
+        # trial carries both edits into SHADE's single per-generation eval.
+        if (SHADE_PAIRWISE_MUTATION and _pair_clusters
+                and _xover_rng.random() < MUTATION_RATE):
+            row = trial[i].detach().cpu().numpy()
+            mutated = mutate_pair_cluster_step(
+                row, _pair_clusters, _tls_to_genes,
+                _phase_split, _xover_rng, _ub_np, STEP_SIZE,
+            )
+            mutated = np.clip(np.round(mutated), _lb_np, _ub_np)
+            trial[i].copy_(
+                torch.as_tensor(mutated, dtype=trial.dtype, device=trial.device)
+            )
+
         members = _linkage_tree.find_node_decomposition(
             int(targets[i]), rng=_xover_rng,
         )
@@ -110,12 +129,18 @@ from config import (
     MAX_EVALS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
+    MUTATION_RATE,
+    SHADE_PAIRWISE_MUTATION,
+    STEP_SIZE,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function,
     build_traffic_fitness_wrapper,
 )
 from src.novel.node_finder_v3 import LinkageTree
+from src.novel.linkage_tree import build_all_tree_masks
+from src.novel.pairwise_mutation import build_phase_split
+from src.novel.SHADE_mutation import mutate_pair_cluster_step
 
 
 # ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────
@@ -177,6 +202,7 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
     """Run one SHADE experiment whose crossover is the v3 cluster variant."""
     global _wrapper, _num_evals
     global _linkage_tree, _tls_to_genes, _num_tls, _xover_rng
+    global _pair_clusters, _phase_split, _lb_np, _ub_np
 
     _num_evals = 0
     fitness_history = []
@@ -187,9 +213,27 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
     _num_tls      = len(tls_to_genes)
     _xover_rng    = rng
 
+    # ── Optional step-pairwise-mutation state (same pair/phase sourcing as
+    #    differential_evolution.py's pair-mutation) ──────────────────────
+    _pair_clusters = None
+    _phase_split   = None
+    _lb_np = np.asarray(bounds_lo)
+    _ub_np = np.asarray(bounds_hi)
+    if SHADE_PAIRWISE_MUTATION:
+        # No threshold needed: only pair_clusters is used here, and that
+        # output ignores the threshold (mixing_masks, which the cut-off gates,
+        # is discarded).
+        _, pair_clusters, _ = build_all_tree_masks(dist_path)
+        _pair_clusters = [(a, b) for a, b in pair_clusters
+                          if a in tls_to_genes and b in tls_to_genes]
+        _phase_split = build_phase_split(baseline_data, tls_to_genes)
+
     print(f"\n{'='*60}")
     print(f"SHADE (EvoX) | Cluster crossover v3 | Tree: {tree_name} | "
           f"num_tls={_num_tls} | Pop: {PYGAD_POPULATION_SIZE}")
+    if SHADE_PAIRWISE_MUTATION:
+        print(f"Step-pairwise-mutation: ENABLED — {len(_pair_clusters)} "
+              f"2-TLS pairs | step={STEP_SIZE} | prob={MUTATION_RATE}")
     print(f"{'='*60}")
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
@@ -308,7 +352,10 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         "best_fitness": best_cost,
         "fitness_history": fitness_history,
         "time_s": round(elapsed, 2),
-        "algorithm": "shade_evox_cluster_crossover_v3",
+        "algorithm": (
+            "shade_evox_cluster_crossover_v3_stepmut"
+            if SHADE_PAIRWISE_MUTATION else "shade_evox_cluster_crossover_v3"
+        ),
         "strategy": "random",
         "pop_size": PYGAD_POPULATION_SIZE,
         "integrality": True,
@@ -317,6 +364,9 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         "total_evals": _num_evals,
         "generations_completed": gen,
         "tree": tree_name,
+        "shade_pairwise_mutation": SHADE_PAIRWISE_MUTATION,
+        "step_size": STEP_SIZE if SHADE_PAIRWISE_MUTATION else None,
+        "num_pair_clusters": len(_pair_clusters) if _pair_clusters else 0,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
@@ -350,6 +400,7 @@ def run_all_experiments():
         "shortest":  out_dir / "tls_distances_shortest.json",
         "euclidian": out_dir / "tls_distances_euclidian.json",
         "fastest":   out_dir / "tls_distances_fastest.json",
+        "random":    out_dir / "tls_distance_random.json",
     }
     summary = {}
 

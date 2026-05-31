@@ -50,7 +50,11 @@ RED_FLOOR    = 5.0    # red phase minimum
 # Yellow phases are frozen to a fixed band (both bounds still used to clamp).
 YELLOW_FLOOR = 3.0
 YELLOW_CEIL  = 6.0
-MUTATION_RATE = 0.15
+MUTATION_RATE = 0.1
+
+# SHADE pairwise step-mutation (cluster v3 crossover hook)
+STEP_SIZE = 1.0                  # green-budget step: second TLS green = first + STEP_SIZE
+SHADE_PAIRWISE_MUTATION = False  # enable step-pairwise-mutation in cluster v3 crossover
 
 CYCLE_LENGTH = 90
 

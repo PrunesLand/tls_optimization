@@ -61,9 +61,6 @@ from config import (
     BASELINE_TRAFFIC_DATA,
     MUTATION_RATE,
     NOVEL_MUTATION,
-    CLUSTER_THRESHOLD_FASTEST,
-    CLUSTER_THRESHOLD_SHORTEST,
-    CLUSTER_THRESHOLD_EUCLIDIAN,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function,
@@ -71,12 +68,6 @@ from src.sumo_setup.fitness_evaluation import (
 )
 from src.novel.linkage_tree import build_all_tree_masks
 from src.novel.pairwise_mutation import mutate_pair_cluster, build_phase_split
-
-THRESHOLDS = {
-    "shortest":  CLUSTER_THRESHOLD_SHORTEST,
-    "euclidian": CLUSTER_THRESHOLD_EUCLIDIAN,
-    "fastest":   CLUSTER_THRESHOLD_FASTEST,
-}
 
 # ── Module-level state ──────────────────────────────────────────────
 _wrapper = None
@@ -180,11 +171,13 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
 
     print(f"\n{'='*60}")
     if NOVEL_MUTATION:
-        threshold = THRESHOLDS[tree_name]
-        print(f"SHADE (EvoX) | Tree: {tree_name} (t={threshold}) | "
+        print(f"SHADE (EvoX) | Tree: {tree_name} | "
               f"Random init | Pop: {PYGAD_POPULATION_SIZE}")
         print(f"{'='*60}")
-        _, pair_clusters, _ = build_all_tree_masks(dist_path, threshold)
+        # No threshold needed: only pair_clusters is used here, and that
+        # output ignores the threshold (mixing_masks, which the cut-off gates,
+        # is discarded).
+        _, pair_clusters, _ = build_all_tree_masks(dist_path)
         valid_pairs = [(a, b) for a, b in pair_clusters
                        if a in tls_to_genes and b in tls_to_genes]
         # Per-TLS green/red/yellow gene-index split that the pair operator
@@ -192,7 +185,6 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
         phase_split = build_phase_split(baseline_data, tls_to_genes)
         print(f"Pair-mutation: ENABLED — {len(valid_pairs)} 2-TLS pairs")
     else:
-        threshold = None
         print(f"SHADE (EvoX) | Random init | Pop: {PYGAD_POPULATION_SIZE}")
         print(f"{'='*60}")
         valid_pairs = []
@@ -394,7 +386,6 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
     if NOVEL_MUTATION:
         results.update({
             "tree": tree_name,
-            "threshold": threshold,
             "mutation_rate": MUTATION_RATE,
             "num_pair_clusters": len(valid_pairs),
         })

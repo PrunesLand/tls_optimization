@@ -46,7 +46,7 @@ def _load_distance_array(distance_json: str):
 
 def build_all_tree_masks(
     distance_json: str,
-    threshold: float,
+    threshold: float | None = None,
 ) -> tuple[list[list[str]], list[tuple[str, str]], dict]:
     """
     Build a Ward linkage tree and return three collections.
@@ -55,6 +55,9 @@ def build_all_tree_masks(
         Every internal node whose merge distance ≤ *threshold*, excluding the
         root node and singletons.  Both parent clusters AND their children are
         collected, giving the full sub-threshold subtree as mixing candidates.
+        Only built when *threshold* is given; when it is ``None`` this list is
+        empty, for callers that need only ``pair_clusters`` / ``tree_structure``
+        (e.g. the SHADE cluster-crossover, which never mixes).
 
     pair_clusters
         Every internal node that groups exactly two TLS IDs, collected from
@@ -79,7 +82,8 @@ def build_all_tree_masks(
     Parameters
     ----------
     distance_json : path to a distance/travel-time JSON file
-    threshold     : Ward merge-distance cut-off (same value used for dendrograms)
+    threshold     : Ward merge-distance cut-off (same value used for dendrograms);
+                    omit (``None``) to skip building mixing_masks entirely
 
     Returns
     -------
@@ -132,6 +136,9 @@ def build_all_tree_masks(
             pair_clusters.append((tls_group[0], tls_group[1]))
 
         # ── Mixing masks: sub-threshold, not root, not singleton ────────
+        # Skipped entirely when no threshold is supplied.
+        if threshold is None:
+            continue
         if node_id == root_id:
             continue                  # root always excluded
         if merge_dist > threshold:
