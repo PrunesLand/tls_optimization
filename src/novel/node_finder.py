@@ -104,14 +104,13 @@ class LinkageTree:
 # ── Demo ───────────────────────────────────────────────────────────────
 
 def _demo():
+    import sys
     project_root = Path(__file__).resolve().parent.parent.parent
     outputs = project_root / "src" / "outputs"
 
-    trees = {
-        "shortest":  outputs / "tls_distances_shortest.json",
-        "euclidian": outputs / "tls_distances_euclidian.json",
-        "fastest":   outputs / "tls_distances_fastest.json",
-    }
+    sys.path.append(str(project_root))
+    from src.novel.distance_trees import distance_tree_paths
+    trees = distance_tree_paths(outputs)
 
     rng = np.random.default_rng(42)
     targets = [1, 2, 3, 5, 8, 20, 100]

@@ -41,6 +41,14 @@ CLUSTER_THRESHOLD_FASTEST = 300
 CLUSTER_THRESHOLD_SHORTEST = 4000
 CLUSTER_THRESHOLD_EUCLIDIAN = 3500
 
+# ── Linkage-tree distance strategies (single source of truth) ──────────
+# Every linkage-based optimiser / analysis tool iterates over these. To add a
+# new strategy (e.g. "manhattan"): add its name here AND a matching variant in
+# src/plot/tls_distances.py (which generates tls_distances_<name>.json). All
+# consumers that call src.novel.distance_trees.distance_tree_paths() then pick
+# it up automatically.
+TREE_STRATEGIES = ["shortest", "euclidian", "fastest", "random"]
+
 # Custom Optimizer  Bounds and Mutation
 # Per-type phase-duration floors (minimums within the fixed cycle). Green/red
 # ceilings are no longer static: they come from the dynamic per-TLS

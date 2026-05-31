@@ -109,7 +109,7 @@ VARIANTS = {
     "random": {
         "compute": random_distance,
         "round_to": 6,
-        "out_json": "tls_distance_random.json",
+        "out_json": "tls_distances_random.json",
         "out_map":  "tls_clusters_random.html",
         "description": "Pairwise random distances in [0, 1) between traffic lights (not derived from SUMO).",
         "value_key":   "distance_m",

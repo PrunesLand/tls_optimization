@@ -34,6 +34,7 @@ from config import (
     BASELINE_TRAFFIC_DATA,
     GAUSSIAN_NOISE,
     GREEN_FLOOR,
+    TREE_STRATEGIES,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function,
@@ -238,8 +239,8 @@ def run_all_experiments():
     out_dir = root / "src" / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trees = ["shortest", "euclidian", "fastest"]
-    strategies = ["random", "baseline", "mixed"]
+    trees = TREE_STRATEGIES
+    strategies = ["random"]
     summary = {}
     
     rng = np.random.default_rng(42)

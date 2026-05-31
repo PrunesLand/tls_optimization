@@ -68,6 +68,7 @@ from src.sumo_setup.fitness_evaluation import (
 )
 from src.novel.linkage_tree import build_all_tree_masks
 from src.novel.pairwise_mutation import mutate_pair_cluster, build_phase_split
+from src.novel.distance_trees import distance_tree_paths
 
 # ── Module-level state ──────────────────────────────────────────────
 _wrapper = None
@@ -426,11 +427,7 @@ def run_all_experiments():
     rng = np.random.default_rng(42)
 
     if NOVEL_MUTATION:
-        trees = {
-            "shortest":  out_dir / "tls_distances_shortest.json",
-            "euclidian": out_dir / "tls_distances_euclidian.json",
-            "fastest":   out_dir / "tls_distances_fastest.json",
-        }
+        trees = distance_tree_paths(out_dir)
         summary = {}
 
         for tree_name, dist_path in trees.items():

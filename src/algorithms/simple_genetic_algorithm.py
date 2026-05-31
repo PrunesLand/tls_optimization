@@ -237,7 +237,7 @@ def run_all_experiments():
     out_dir = root / "src" / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    strategies = ["random", "baseline", "mixed"]
+    strategies = ["random"]
     summary = {}
 
     rng = np.random.default_rng(42)

@@ -109,6 +109,7 @@ from src.sumo_setup.fitness_evaluation import (
     build_traffic_fitness_wrapper,
 )
 from src.novel.node_finder import LinkageTree
+from src.novel.distance_trees import distance_tree_paths
 
 
 # ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────
@@ -339,11 +340,7 @@ def run_all_experiments():
 
     rng = np.random.default_rng(42)
 
-    trees = {
-        "shortest":  out_dir / "tls_distances_shortest.json",
-        "euclidian": out_dir / "tls_distances_euclidian.json",
-        "fastest":   out_dir / "tls_distances_fastest.json",
-    }
+    trees = distance_tree_paths(out_dir)
     summary = {}
 
     for tree_name, dist_path in trees.items():

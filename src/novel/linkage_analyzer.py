@@ -79,12 +79,11 @@ def analyze_linkage(distance_json):
     print(f"     -> Thresholds yielding this median{actual_count_str}: {thresholds_str}")
 
 if __name__ == '__main__':
+    import sys
     root = Path(__file__).resolve().parent.parent.parent
-    files = [
-        root / "src/outputs/tls_distances_fastest.json",
-        root / "src/outputs/tls_distances_shortest.json",
-        root / "src/outputs/tls_distances_euclidian.json"
-    ]
+    sys.path.append(str(root))
+    from src.novel.distance_trees import distance_tree_paths
+    files = list(distance_tree_paths(root / "src/outputs").values())
     for f in files:
         if f.exists():
             analyze_linkage(f)

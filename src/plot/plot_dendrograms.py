@@ -190,7 +190,7 @@ def main():
     fastest_file = out_dir / "tls_distances_fastest.json"
     shortest_file = out_dir / "tls_distances_shortest.json"
     euclidean_file = out_dir / "tls_distances_euclidian.json"
-    random_file = out_dir / "tls_distance_random.json"
+    random_file = out_dir / "tls_distances_random.json"
 
     plot_fastest_dendrogram(fastest_file, out_dir)
     plot_shortest_dendrogram(shortest_file, out_dir)

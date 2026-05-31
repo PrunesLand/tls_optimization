@@ -141,6 +141,7 @@ from src.novel.node_finder_v3 import LinkageTree
 from src.novel.linkage_tree import build_all_tree_masks
 from src.novel.pairwise_mutation import build_phase_split
 from src.novel.SHADE_mutation import mutate_pair_cluster_step
+from src.novel.distance_trees import distance_tree_paths
 
 
 # ── SUMO wrapper / problem (parallel SUMO evaluation) ──────────────
@@ -396,12 +397,7 @@ def run_all_experiments():
 
     rng = np.random.default_rng(42)
 
-    trees = {
-        "shortest":  out_dir / "tls_distances_shortest.json",
-        "euclidian": out_dir / "tls_distances_euclidian.json",
-        "fastest":   out_dir / "tls_distances_fastest.json",
-        "random":    out_dir / "tls_distance_random.json",
-    }
+    trees = distance_tree_paths(out_dir)
     summary = {}
 
     for tree_name, dist_path in trees.items():
