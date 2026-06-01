@@ -32,6 +32,12 @@ WHAT IS SWEPT
     AVERAGED cost drives winner selection so the chosen config is robust to
     the seed.
 
+* Novel cluster-v3 WITHOUT step-mutation (SHADE_PAIRWISE_MUTATION=False) —
+  same walk-decomposition bin-crossing, but no step-mutation.  No prob/step
+  axis, so it is a plain pop × tree sweep: 3 pops × 4 trees = 12 configs, each
+  run twice.  run_single_de tags these JSONs ``shade_pairwise_mutation=false``
+  / ``step_size=null`` so the output marks them mutation-free.
+
 * Plain SHADE (NOVEL_MUTATION=False) — swept over the SAME 3 populations
   {50,100,200}.  Plain SHADE ignores the linkage trees, so there is no tree or
   mutation axis: 3 configs, each run twice.
@@ -41,9 +47,10 @@ OUTPUT FILES (in src/outputs/)
 * ``de_experiments_rep1.json`` / ``de_experiments_rep2.json`` — per-repetition
   view: every evaluated configuration with that rep's best cost / time / file.
 * ``de_experiments_averaged.json`` — averaged best cost per configuration plus
-  the per-tree winners (selected on the averaged cost).
+  the per-tree / per-pop winners (selected on the averaged cost).  Sections:
+  ``cluster_v3_novel_mutation`` / ``cluster_v3_no_mutation`` / ``plain_de_shade``.
 * Per-run algorithm JSONs are renamed uniquely and tagged ``_rep1`` / ``_rep2``
-  so no run clobbers another.
+  so no run clobbers another (no-mutation runs carry a ``_nomut`` marker).
 
 Usage:
   python -m src.experiments.de_experiments
@@ -220,6 +227,75 @@ def search_tree(ctx, tree_name, dist_path):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Novel cluster-v3 WITHOUT step-mutation (run each pop×tree twice, average)
+# ══════════════════════════════════════════════════════════════════════
+
+def run_one_nomut(ctx, tree_name, dist_path, pop):
+    """Run cluster-v3 (novel bin-crossing) with step-mutation OFF, twice.
+
+    Same walk-decomposition crossover as the mutation sweep, but
+    SHADE_PAIRWISE_MUTATION=False so no step-mutation is applied.  There is no
+    prob/step axis here — only the population.  run_single_de's output records
+    ``shade_pairwise_mutation=false`` / ``step_size=null`` so the JSON itself
+    marks these as mutation-free.  Returns {avg, rep1, rep2}.
+    """
+    reps = {}
+    for rep, seed in REP_SEEDS.items():
+        v3.PYGAD_POPULATION_SIZE = pop
+        v3.SHADE_PAIRWISE_MUTATION = False
+
+        rng = np.random.default_rng(seed)
+        torch.manual_seed(seed)
+
+        print(f"\n>>> RUN[v3-nomut] tree={tree_name} pop={pop} "
+              f"rep={rep} (seed={seed})")
+        best_cost, elapsed = v3.run_single_de(
+            ctx["baseline_data"], ctx["num_genes"], ctx["tls_to_genes"],
+            ctx["bounds_lo"], ctx["bounds_hi"], ctx["out_dir"], rng,
+            tree_name=tree_name, dist_path=str(dist_path),
+        )
+
+        produced = (ctx["out_dir"]
+                    / f"differential_evolution_cluster_v3_{tree_name}.json")
+        unique = (ctx["out_dir"]
+                  / f"differential_evolution_cluster_v3_nomut_{tree_name}"
+                    f"_pop{pop}_rep{rep}.json")
+        out_name = None
+        if produced.exists():
+            produced.replace(unique)
+            out_name = unique.name
+
+        reps[rep] = {"best": best_cost, "time_s": elapsed, "file": out_name}
+
+    avg = float(np.mean([reps[r]["best"] for r in REP_SEEDS]))
+    print(f"\n[v3-nomut {tree_name} pop={pop}] avg {avg:.2f} "
+          f"(rep1 {reps[1]['best']:.2f} / rep2 {reps[2]['best']:.2f})")
+    return {"avg": avg, "rep1": reps[1], "rep2": reps[2]}
+
+
+def run_nomut_sweep(ctx, selected):
+    """Sweep cluster-v3 (no mutation) over POPULATIONS for each tree, ×2 reps.
+
+    Returns {tree: {pop_str: {avg, rep1, rep2}}}.  Per-tree dicts share the
+    plain-SHADE shape, so _plain_view projects them (best pop named per view).
+    """
+    _use_v3_crossover()
+    per_tree = {}
+    for tree_name, dist_path in selected.items():
+        try:
+            per_tree[tree_name] = {
+                str(pop): run_one_nomut(ctx, tree_name, dist_path, pop)
+                for pop in POPULATIONS
+            }
+        except Exception as e:  # keep going; record the failure
+            print(f"ERROR [v3-nomut:{tree_name}]: {e}")
+            import traceback
+            traceback.print_exc()
+            per_tree[tree_name] = {"error": str(e)}
+    return per_tree
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Plain SHADE sweep over the same 3 populations (run each twice, average)
 # ══════════════════════════════════════════════════════════════════════
 
@@ -372,7 +448,10 @@ def run_experiments(max_evals=None, trees=None):
             traceback.print_exc()
             per_tree[tree_name] = {"error": str(e)}
 
-    # ── Section 2: plain SHADE over the same populations ─────────────
+    # ── Section 2: cluster-v3 WITHOUT step-mutation (pop × tree) ─────
+    nomut = run_nomut_sweep(ctx, selected)
+
+    # ── Section 3: plain SHADE over the same populations ─────────────
     try:
         plain = run_plain_de(ctx)
     except Exception as e:
@@ -401,6 +480,10 @@ def run_experiments(max_evals=None, trees=None):
                 t: (info if "error" in info else _tree_view(info, view))
                 for t, info in per_tree.items()
             },
+            "cluster_v3_no_mutation": {
+                t: (by_pop if "error" in by_pop else _plain_view(by_pop, view))
+                for t, by_pop in nomut.items()
+            },
             "plain_de_shade": (plain if "error" in plain
                                else _plain_view(plain, view)),
         }
@@ -427,6 +510,17 @@ def run_experiments(max_evals=None, trees=None):
             print(f"{tree_name:<12}{info['best_pop']:>6}"
                   f"{info['best_prob']:>7}{info['best_step']:>6}"
                   f"{info['winner']['avg']:>12.2f}")
+
+    print("\nCluster-v3 NO mutation (averaged best per tree):")
+    print(f"{'Tree':<12}{'Pop':>6}{'AvgBest':>12}")
+    print("─" * 30)
+    for tree_name, by_pop in nomut.items():
+        if "error" in by_pop:
+            print(f"{tree_name:<12}{'ERROR':>18}")
+        else:
+            best_pop = min(POPULATIONS, key=lambda p: by_pop[str(p)]["avg"])
+            print(f"{tree_name:<12}{best_pop:>6}"
+                  f"{by_pop[str(best_pop)]['avg']:>12.2f}")
 
     print("\nPlain SHADE (averaged best):")
     print(f"{'Pop':>6}{'AvgBest':>12}")
