@@ -9,12 +9,11 @@ when run standalone, so per-algorithm results are preserved.
 Algorithms run (each as `python -m <module>`, in order):
   - Random Search             (src.algorithms.random_search)
   - Baseline evaluation       (src.algorithms.evaluate_baseline)
-  - Differential Evolution    (src.algorithms.differential_evolution)  # pure DE
   - Simple Genetic Algorithm  (src.algorithms.simple_genetic_algorithm)
 
-Note: "pure DE" (plain SHADE) requires NOVEL_MUTATION=False in config.py.
-      differential_evolution.py honours that flag itself; this runner does
-      not change it.
+Note: plain DE-SHADE (and the novel cluster-v3 step-mutation sweep) now live
+      in src.experiments.de_experiments, which runs them twice and averages;
+      they are intentionally NOT launched from this baseline runner.
 
 Each subprocess inherits this process's stdout/stderr, so output streams
 live to the console in order.  Running sequentially means each algorithm
@@ -34,7 +33,6 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 EXPERIMENTS = {
     "random_search": "src.algorithms.random_search",
     "evaluate_baseline": "src.algorithms.evaluate_baseline",
-    "differential_evolution": "src.algorithms.differential_evolution",
     "simple_genetic_algorithm": "src.algorithms.simple_genetic_algorithm",
 }
 
