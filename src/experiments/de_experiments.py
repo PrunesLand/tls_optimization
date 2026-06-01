@@ -44,11 +44,15 @@ WHAT IS SWEPT
 
 OUTPUT FILES (in src/outputs/)
 ------------------------------
-* ``de_experiments_rep1.json`` / ``de_experiments_rep2.json`` — per-repetition
-  view: every evaluated configuration with that rep's best cost / time / file.
-* ``de_experiments_averaged.json`` — averaged best cost per configuration plus
-  the per-tree / per-pop winners (selected on the averaged cost).  Sections:
-  ``cluster_v3_novel_mutation`` / ``cluster_v3_no_mutation`` / ``plain_de_shade``.
+Each of the three variants gets its OWN rep1/rep2/averaged file family (the
+rep files carry per-run best cost / time / file; the averaged file carries the
+averaged best plus the winners selected on the averaged cost):
+* ``de_experiments_rep1.json`` / ``_rep2.json`` / ``_averaged.json`` —
+  cluster-v3 WITH step-mutation (``cluster_v3_novel_mutation`` section).
+* ``de_experiments_nomut_rep1.json`` / ``_rep2.json`` / ``_averaged.json`` —
+  cluster-v3 NO mutation (``cluster_v3_no_mutation`` section).
+* ``de_experiments_plain_rep1.json`` / ``_rep2.json`` / ``_averaged.json`` —
+  plain SHADE (``plain_de_shade`` section).
 * Per-run algorithm JSONs are renamed uniquely and tagged ``_rep1`` / ``_rep2``
   so no run clobbers another (no-mutation runs carry a ``_nomut`` marker).
 
@@ -480,14 +484,49 @@ def run_experiments(max_evals=None, trees=None):
                 t: (info if "error" in info else _tree_view(info, view))
                 for t, info in per_tree.items()
             },
+        }
+        path = out_dir / f"de_experiments_{rep_label}.json"
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=4)
+        return path
+
+    # Plain SHADE gets its own file family.
+    def _write_plain(view, rep_label, seed_label):
+        payload = {
+            "repetition": rep_label,
+            "seed": seed_label,
+            "variant": "shade_evox_plain",
+            "max_evals": de.MAX_EVALS,
+            "grid": {"population": POPULATIONS},
+            "total_time_s": round(total, 2),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "plain_de_shade": (plain if "error" in plain
+                               else _plain_view(plain, view)),
+        }
+        path = out_dir / f"de_experiments_plain_{rep_label}.json"
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=4)
+        return path
+
+    # The cluster-v3 NO-mutation variant gets its own file family.
+    def _write_nomut(view, rep_label, seed_label):
+        payload = {
+            "repetition": rep_label,
+            "seed": seed_label,
+            "variant": "shade_evox_cluster_crossover_v3_no_mutation",
+            "max_evals": v3.MAX_EVALS,
+            "grid": {
+                "population": POPULATIONS,
+                "trees": list(selected.keys()),
+            },
+            "total_time_s": round(total, 2),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "cluster_v3_no_mutation": {
                 t: (by_pop if "error" in by_pop else _plain_view(by_pop, view))
                 for t, by_pop in nomut.items()
             },
-            "plain_de_shade": (plain if "error" in plain
-                               else _plain_view(plain, view)),
         }
-        path = out_dir / f"de_experiments_{rep_label}.json"
+        path = out_dir / f"de_experiments_nomut_{rep_label}.json"
         with open(path, "w") as f:
             json.dump(payload, f, indent=4)
         return path
@@ -495,6 +534,12 @@ def run_experiments(max_evals=None, trees=None):
     p1 = _write("rep1", "rep1", REP_SEEDS[1])
     p2 = _write("rep2", "rep2", REP_SEEDS[2])
     pa = _write("avg", "averaged", list(REP_SEEDS.values()))
+    n1 = _write_nomut("rep1", "rep1", REP_SEEDS[1])
+    n2 = _write_nomut("rep2", "rep2", REP_SEEDS[2])
+    na = _write_nomut("avg", "averaged", list(REP_SEEDS.values()))
+    pl1 = _write_plain("rep1", "rep1", REP_SEEDS[1])
+    pl2 = _write_plain("rep2", "rep2", REP_SEEDS[2])
+    pla = _write_plain("avg", "averaged", list(REP_SEEDS.values()))
 
     # ── Console summary (averaged) ───────────────────────────────────
     print(f"\n{'='*60}")
@@ -532,7 +577,9 @@ def run_experiments(max_evals=None, trees=None):
             print(f"{pop:>6}{plain[str(pop)]['avg']:>12.2f}{star}")
         print(f"→ best plain pop (avg): {best_plain_pop}")
 
-    print(f"\nWrote:\n  {p1}\n  {p2}\n  {pa}")
+    print(f"\nWrote:\n  {p1}\n  {p2}\n  {pa}"
+          f"\n  {n1}\n  {n2}\n  {na}"
+          f"\n  {pl1}\n  {pl2}\n  {pla}")
 
 
 def main():
