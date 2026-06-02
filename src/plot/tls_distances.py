@@ -204,7 +204,19 @@ def build_distance_matrices() -> None:
     print(f"Loading SUMO network from: {net_file} ...")
     net = sumolib.net.readNet(str(net_file))
 
-    nodes = [n for n in net.getNodes() if n.getType() == "traffic_light"]
+    # Restrict to the same filtered TLS set as the generated baseline
+    # (generation.generate_data drops phase counts outside OPTIMIZE_PHASE_COUNTS).
+    # Using the baseline JSON as the single source of truth keeps this plot in
+    # sync with every other downstream consumer.
+    with open(config.BASELINE_TRAFFIC_DATA) as f:
+        baseline_ids = set(json.load(f)["tls_data"].keys())
+
+    nodes = [
+        n for n in net.getNodes()
+        if n.getType() == "traffic_light" and n.getID() in baseline_ids
+    ]
+    print(f"Baseline lists {len(baseline_ids)} TLS(s); "
+          f"{len(nodes)} matched in the network.")
     tls_data = [
         {
             "id": n.getID(),
