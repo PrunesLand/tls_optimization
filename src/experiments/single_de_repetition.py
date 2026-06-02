@@ -68,8 +68,9 @@ import src.algorithms.differential_evolution_cluster_v3 as v3  # noqa: E402
 import src.algorithms.differential_evolution as de  # noqa: E402
 from evox.algorithms.so.de_variants import shade as _shade_module  # noqa: E402
 
-# Single repetition → one seed.
-DEFAULT_SEED = 42
+# Single repetition → one seed.  Distinct from de_experiments.py's rep seeds
+# (42 / 43) so this run is an independent draw, not a duplicate of either rep.
+DEFAULT_SEED = 44
 
 # ── Chosen winning configurations ─────────────────────────────────────
 # Cluster-v3 WITH step-mutation + bin-crossing: per-tree (pop, prob, step).
