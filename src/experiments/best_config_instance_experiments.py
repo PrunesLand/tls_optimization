@@ -65,6 +65,21 @@ import torch  # noqa: E402  (after sys.path setup, mirrors the algorithm modules
 
 import config  # noqa: E402
 
+# ``fitness_evaluation`` opens config.BASELINE_TRAFFIC_DATA at IMPORT time
+# (module-level ``BASELINE_DATA = json.load(...)``), so the file must exist
+# before we import the algorithm modules below.  On a fresh checkout the Jakarta
+# baseline is absent — write a harmless empty stub if so.  Its contents are
+# never used: we override ``fe.BASELINE_DATA`` with each instance's real
+# baseline (see activate_instance) before any evaluation runs.  Guarded on
+# non-existence so a real Jakarta baseline is never clobbered.
+_jakarta_baseline = Path(config.BASELINE_TRAFFIC_DATA)
+if not _jakarta_baseline.exists():
+    _jakarta_baseline.parent.mkdir(parents=True, exist_ok=True)
+    with open(_jakarta_baseline, "w") as _f:
+        json.dump({"tls_data": {}, "fitness": 0}, _f)
+    print("[best_config_instance_experiments] wrote import-time baseline stub "
+          f"→ {_jakarta_baseline} (replaced per-instance at runtime)")
+
 # Both algorithm modules monkeypatch the SAME symbol
 # (``_shade_module.DE_binary_crossover``) at import time, so whichever is
 # imported LAST wins globally.  We re-assert the correct crossover before each
