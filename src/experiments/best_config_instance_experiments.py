@@ -1,5 +1,5 @@
 """
-Best-configuration experiments across instances (Jurong + Malaga).
+Best-configuration experiments across instances (Beijing + Kota Kinabalu).
 
 Unlike ``de_experiments.py`` (which *searches* for good hyper-parameters on the
 Jakarta instance), this script takes the BEST configurations already found by
@@ -21,7 +21,7 @@ INSTANCE SWITCHING
 latter ``BASELINE_DATA``) as module globals, so we switch instances by pointing
 those globals at the per-instance ``osm.sumocfg`` / baseline before each run.
 
-Jurong and Malaga ship only SUMO network files — no baseline JSON and no
+Beijing and Kota Kinabalu ship only SUMO network files — no baseline JSON and no
 distance trees.  Both are GENERATED on first use and cached under
 ``src/outputs/instances/<instance>/`` so reruns skip the heavy SUMO/sumolib work:
 
@@ -45,7 +45,7 @@ OUTPUT (per instance, in src/outputs/instances/<instance>/)
 
 Usage:
   python -m src.experiments.best_config_instance_experiments
-  python -m src.experiments.best_config_instance_experiments --instances jurong
+  python -m src.experiments.best_config_instance_experiments --instances beijing
   python -m src.experiments.best_config_instance_experiments --max-evals 200
 """
 
@@ -97,8 +97,8 @@ from src.novel.distance_trees import distance_tree_paths  # noqa: E402
 
 # ── Instances to optimise (folder under src/ holding each one's SUMO files) ──
 INSTANCES = {
-    "jurong": ROOT / "src" / "sumo_setup_jurong",
-    "malaga": ROOT / "src" / "sumo_setup_malaga",
+    "beijing": ROOT / "src" / "sumo_setup_beijing",
+    "kotakinabalu": ROOT / "src" / "sumo_setup_kotakinabalu",
 }
 
 # ── Repetition seeds — the seeds these winners were discovered with ──
