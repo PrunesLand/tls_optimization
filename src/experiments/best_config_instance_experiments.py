@@ -1,5 +1,5 @@
 """
-Best-configuration experiments across instances (Beijing + Kota Kinabalu).
+Best-configuration experiments across instances (Jakarta + Beijing + Kota Kinabalu).
 
 Unlike ``de_experiments.py`` (which *searches* for good hyper-parameters on the
 Jakarta instance), this script takes the BEST configurations already found by
@@ -96,7 +96,13 @@ import src.plot.tls_distances as td  # noqa: E402
 from src.novel.distance_trees import distance_tree_paths  # noqa: E402
 
 # ── Instances to optimise (folder under src/ holding each one's SUMO files) ──
+# Jakarta is the reference instance these best configs were *discovered* on, so
+# re-running it here is circular; it is included only so it CAN be run on demand
+# (e.g. ``--instances jakarta``).  Like every other instance, it generates and
+# caches its own baseline + distance trees under src/outputs/instances/jakarta/
+# rather than reusing the canonical src/outputs/baseline_traffic_data.json.
 INSTANCES = {
+    "jakarta": ROOT / "src" / "sumo_setup",
     "beijing": ROOT / "src" / "sumo_setup_beijing",
     "kotakinabalu": ROOT / "src" / "sumo_setup_kotakinabalu",
 }

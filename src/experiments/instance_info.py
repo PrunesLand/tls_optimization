@@ -1,4 +1,4 @@
-"""Print traffic-light phase statistics for each instance (Jakarta/Jurong/Malaga).
+"""Print traffic-light phase statistics for each instance (Jakarta/Beijing/Kota Kinabalu).
 
 For every instance, TLSs are grouped by their phase count (3-phase, 4-phase, …)
 and for each group this prints:
@@ -20,7 +20,7 @@ static program), so no SUMO/libsumo process is started.
 
 Usage:
   python -m src.experiments.instance_info
-  python -m src.experiments.instance_info --instances jurong malaga
+  python -m src.experiments.instance_info --instances beijing kotakinabalu
   python -m src.experiments.instance_info --bin-width 5
 """
 
@@ -39,8 +39,6 @@ from config import GREEN_FLOOR, CYCLE_LENGTH, OPTIMIZE_PHASE_COUNTS  # noqa: E40
 # Instance name → SUMO network file (mirrors best_config_instance_experiments).
 INSTANCES = {
     "jakarta": ROOT / "src" / "sumo_setup" / "osm.net.xml.gz",
-    "jurong":  ROOT / "src" / "sumo_setup_jurong" / "osm.net.xml.gz",
-    "malaga":  ROOT / "src" / "sumo_setup_malaga" / "osm.net.xml.gz",
     "kotakinabalu": ROOT / "src" / "sumo_setup_kotakinabalu" / "osm.net.xml.gz",
     "beijing": ROOT / "src" / "sumo_setup_beijing" / "osm.net.xml.gz",
 }
