@@ -150,7 +150,7 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
 
 
 def run_all_experiments():
-    """Run all 9 experiments to match LT-GOMEA structure."""
+    """Run all experiments (4 trees x 1 strategy = 4 blocks)."""
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
 
@@ -165,8 +165,8 @@ def run_all_experiments():
     out_dir = root / "src" / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trees = ["shortest", "euclidian", "fastest"]
-    strategies = ["random", "baseline", "mixed"]
+    trees = ["shortest", "euclidian", "fastest", "random"]
+    strategies = ["random"]
     summary = {}
     
     rng = np.random.default_rng(42)
