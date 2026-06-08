@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, GREEN_FLOOR
+    MAX_EVALS, GREEN_FLOOR, INSTANCES
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -64,10 +64,10 @@ def build_gene_map(baseline_data):
     return tls_to_genes, idx, np.array(baseline)
 
 
-def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng):
-    """Run a single Random Search experiment block."""
+def run_single_search(strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng):
+    """Run a single Random Search and write its result file."""
     print(f"\n{'='*60}")
-    print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {MAX_EVALS}")
+    print(f"Random Search | Strategy: {strategy} | Solutions: {MAX_EVALS}")
     print(f"{'='*60}")
 
     solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng, ub)
@@ -127,7 +127,6 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
 
     best_json["composite_cost"] = best_fitness
 
-    label = f"{tree_name}_{strategy}"
     output = {
         "evaluations": results,
         "best_configuration": best_json,
@@ -137,20 +136,40 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
         "MAX_EVALS": MAX_EVALS,
         "total_evaluations": len(results),
         "algorithm": "random_search",
-        "tree": tree_name,
         "strategy": strategy,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_path = out_dir / f"random_search_{label}.json"
+    out_path = out_dir / "random_search.json"
     with open(out_path, "w") as fh:
         json.dump(output, fh, indent=2)
 
     return best_fitness, total_time
 
 
+def _resolve_out_dir():
+    """Output dir for this run: ``<active instance out_dir>/random_search``.
+
+    The active instance is whichever ``INSTANCES`` entry matches the baseline
+    traffic data ``config`` resolved (honours ``TLS_BASELINE_DATA``); falls back
+    to the default ``src/outputs`` when nothing matches.
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    active = Path(BASELINE_TRAFFIC_DATA).resolve()
+    base = root / "src" / "outputs"
+    for spec in INSTANCES.values():
+        if Path(spec["baseline_data"]).resolve() == active:
+            base = spec["out_dir"]
+            break
+    return base / "random_search"
+
+
 def run_all_experiments():
-    """Run all experiments (4 trees x 1 strategy = 4 blocks)."""
+    """Run a single random search (random init, no tree strategies).
+
+    Writes ``random_search.json`` into the active instance's
+    ``<out_dir>/random_search`` folder.
+    """
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
 
@@ -158,41 +177,33 @@ def run_all_experiments():
         baseline_data=baseline_data,
         fitness_function=_traffic_fitness,
     )
-    
+
     tls_to_genes, _, baseline_vec = build_gene_map(baseline_data)
 
-    root = Path(__file__).resolve().parent.parent.parent
-    out_dir = root / "src" / "outputs"
+    out_dir = _resolve_out_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trees = ["shortest", "euclidian", "fastest", "random"]
-    strategies = ["random"]
-    summary = {}
-    
+    strategy = "random"
     rng = np.random.default_rng(42)
 
-    for tree_name in trees:
-        for strat in strategies:
-            label = f"{tree_name}_{strat}"
-            try:
-                best_cost, elapsed = run_single_search(
-                    tree_name, strat, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng
-                )
-                summary[label] = {"best": best_cost, "time_s": elapsed}
-            except Exception as e:
-                print(f"ERROR [{label}]: {e}")
-                import traceback; traceback.print_exc()
-                summary[label] = {"error": str(e)}
+    try:
+        best_cost, elapsed = run_single_search(
+            strategy, baseline_data, wrapper, num_genes,
+            baseline_vec, tls_to_genes, ub, out_dir, rng
+        )
+        info = {"best": best_cost, "time_s": elapsed}
+    except Exception as e:
+        print(f"ERROR [{strategy}]: {e}")
+        import traceback; traceback.print_exc()
+        info = {"error": str(e)}
 
-    # Print results table
-    print(f"\n{'Tree Label':<15} {'Strategy':<10} {'Best':>12} {'Time':>8}")
-    print("─" * 47)
-    for label, info in summary.items():
-        t, s = label.rsplit("_", 1)
-        if "error" in info:
-            print(f"{t:<15} {s:<10} {'ERROR':>12}")
-        else:
-            print(f"{t:<15} {s:<10} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
+    # Print results
+    print(f"\n{'Strategy':<10} {'Best':>14} {'Time':>9}")
+    print("─" * 35)
+    if "error" in info:
+        print(f"{strategy:<10} {'ERROR':>14}")
+    else:
+        print(f"{strategy:<10} {info['best']:>14.2f} {info['time_s']:>8.1f}s")
 
 
 if __name__ == "__main__":
