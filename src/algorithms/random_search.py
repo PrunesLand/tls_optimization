@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, GREEN_FLOOR, INSTANCES
+    MAX_EVALS, GREEN_FLOOR, INSTANCES, SEED_BASE
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -137,10 +137,11 @@ def run_single_search(strategy, baseline_data, wrapper, num_genes, baseline_vec,
         "total_evaluations": len(results),
         "algorithm": "random_search",
         "strategy": strategy,
+        "seed": int(os.environ.get("TLS_RS_SEED", SEED_BASE)),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_path = out_dir / "random_search.json"
+    out_path = out_dir / os.environ.get("TLS_RS_OUTFILE", "random_search.json")
     with open(out_path, "w") as fh:
         json.dump(output, fh, indent=2)
 
@@ -153,7 +154,13 @@ def _resolve_out_dir():
     The active instance is whichever ``INSTANCES`` entry matches the baseline
     traffic data ``config`` resolved (honours ``TLS_BASELINE_DATA``); falls back
     to the default ``src/outputs`` when nothing matches.
+
+    ``TLS_RS_OUTDIR`` overrides this entirely (used by the multi-repetition
+    runner to collect all reps + summaries under one dedicated folder).
     """
+    override = os.environ.get("TLS_RS_OUTDIR")
+    if override:
+        return Path(override)
     root = Path(__file__).resolve().parent.parent.parent
     active = Path(BASELINE_TRAFFIC_DATA).resolve()
     base = root / "src" / "outputs"
@@ -169,6 +176,15 @@ def run_all_experiments():
 
     Writes ``random_search.json`` into the active instance's
     ``<out_dir>/random_search`` folder.
+
+    Two environment variables let a multi-repetition runner drive this without
+    touching the module:
+      * ``TLS_RS_SEED`` — RNG seed for the initial population (default
+        ``SEED_BASE``).  Distinct seeds across repetitions make the runs differ;
+        reusing one seed would make them byte-identical and any average over
+        them meaningless.
+      * ``TLS_RS_OUTFILE`` — basename to write instead of ``random_search.json``
+        (e.g. ``random_search_rep1.json``), so reps never clobber each other.
     """
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
@@ -183,8 +199,15 @@ def run_all_experiments():
     out_dir = _resolve_out_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Optional MAX_EVALS override (smoke tests). MAX_EVALS is read as a module
+    # global by run_single_search, so reassign it here before the run.
+    global MAX_EVALS
+    if "TLS_RS_MAX_EVALS" in os.environ:
+        MAX_EVALS = int(os.environ["TLS_RS_MAX_EVALS"])
+
     strategy = "random"
-    rng = np.random.default_rng(42)
+    seed = int(os.environ.get("TLS_RS_SEED", SEED_BASE))
+    rng = np.random.default_rng(seed)
 
     try:
         best_cost, elapsed = run_single_search(
