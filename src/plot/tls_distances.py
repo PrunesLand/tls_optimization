@@ -67,7 +67,7 @@ def random_distance(net, node_a, node_b) -> float:
 
 # ---------- Variant configuration ----------
 # Each variant preserves the JSON schema of its original file so downstream
-# consumers (node_finder, dendrograms, optimizers) keep working unchanged.
+# consumers (src/novel/node_finder, dendrograms, optimizers) keep working unchanged.
 
 VARIANTS = {
     "euclidian": {
@@ -109,7 +109,7 @@ VARIANTS = {
     "random": {
         "compute": random_distance,
         "round_to": 6,
-        "out_json": "tls_distance_random.json",
+        "out_json": "tls_distances_random.json",
         "out_map":  "tls_clusters_random.html",
         "description": "Pairwise random distances in [0, 1) between traffic lights (not derived from SUMO).",
         "value_key":   "distance_m",
@@ -204,7 +204,19 @@ def build_distance_matrices() -> None:
     print(f"Loading SUMO network from: {net_file} ...")
     net = sumolib.net.readNet(str(net_file))
 
-    nodes = [n for n in net.getNodes() if n.getType() == "traffic_light"]
+    # Restrict to the same filtered TLS set as the generated baseline
+    # (generation.generate_data drops phase counts outside OPTIMIZE_PHASE_COUNTS).
+    # Using the baseline JSON as the single source of truth keeps this plot in
+    # sync with every other downstream consumer.
+    with open(config.BASELINE_TRAFFIC_DATA) as f:
+        baseline_ids = set(json.load(f)["tls_data"].keys())
+
+    nodes = [
+        n for n in net.getNodes()
+        if n.getType() == "traffic_light" and n.getID() in baseline_ids
+    ]
+    print(f"Baseline lists {len(baseline_ids)} TLS(s); "
+          f"{len(nodes)} matched in the network.")
     tls_data = [
         {
             "id": n.getID(),

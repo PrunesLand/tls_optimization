@@ -1,4 +1,4 @@
-libsumo
+libsumo>=1.27.0
 numpy
 pygad
 gomea

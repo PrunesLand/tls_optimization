@@ -7,7 +7,7 @@ with parallel fitness evaluation via SUMO.
 
 When config.NOVEL_MUTATION is True, the end of each SHADE generation
 applies a pair-cluster mutation (borrowed from
-src.algorithms.custom_optimizer) to a MUTATION_RATE fraction of the
+src.novel.pairwise_mutation) to a MUTATION_RATE fraction of the
 population.  Pair clusters are derived from the Ward linkage tree built
 on each distance matrix (shortest / euclidian / fastest).  Mutants are
 accepted greedily — only when they improve on their parent's fitness —
@@ -59,27 +59,16 @@ from config import (
     MAX_EVALS,
     NUM_PROCESSORS,
     BASELINE_TRAFFIC_DATA,
-    GENE_LOW, GENE_HIGH,
     MUTATION_RATE,
     NOVEL_MUTATION,
-    CLUSTER_THRESHOLD_FASTEST,
-    CLUSTER_THRESHOLD_SHORTEST,
-    CLUSTER_THRESHOLD_EUCLIDIAN,
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function,
     build_traffic_fitness_wrapper,
 )
-from src.algorithms.custom_optimizer import (
-    build_all_tree_masks,
-    mutate_pair_cluster,
-)
-
-THRESHOLDS = {
-    "shortest":  CLUSTER_THRESHOLD_SHORTEST,
-    "euclidian": CLUSTER_THRESHOLD_EUCLIDIAN,
-    "fastest":   CLUSTER_THRESHOLD_FASTEST,
-}
+from src.novel.linkage_tree import build_all_tree_masks
+from src.novel.pairwise_mutation import mutate_pair_cluster, build_phase_split
+from src.novel.distance_trees import distance_tree_paths
 
 # ── Module-level state ──────────────────────────────────────────────
 _wrapper = None
@@ -183,19 +172,24 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
 
     print(f"\n{'='*60}")
     if NOVEL_MUTATION:
-        threshold = THRESHOLDS[tree_name]
-        print(f"SHADE (EvoX) | Tree: {tree_name} (t={threshold}) | "
+        print(f"SHADE (EvoX) | Tree: {tree_name} | "
               f"Random init | Pop: {PYGAD_POPULATION_SIZE}")
         print(f"{'='*60}")
-        _, pair_clusters, _ = build_all_tree_masks(dist_path, threshold)
+        # No threshold needed: only pair_clusters is used here, and that
+        # output ignores the threshold (mixing_masks, which the cut-off gates,
+        # is discarded).
+        _, pair_clusters, _ = build_all_tree_masks(dist_path)
         valid_pairs = [(a, b) for a, b in pair_clusters
                        if a in tls_to_genes and b in tls_to_genes]
+        # Per-TLS green/red/yellow gene-index split that the pair operator
+        # needs (green grown, red pinned, yellow frozen).
+        phase_split = build_phase_split(baseline_data, tls_to_genes)
         print(f"Pair-mutation: ENABLED — {len(valid_pairs)} 2-TLS pairs")
     else:
-        threshold = None
         print(f"SHADE (EvoX) | Random init | Pop: {PYGAD_POPULATION_SIZE}")
         print(f"{'='*60}")
         valid_pairs = []
+        phase_split = {}
 
     n_workers = NUM_PROCESSORS or os.cpu_count() or 1
 
@@ -275,7 +269,8 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
                 mutants_np = np.stack([
                     np.clip(
                         np.round(mutate_pair_cluster(
-                            pop_np[i], valid_pairs, tls_to_genes, rng
+                            pop_np[i], valid_pairs, tls_to_genes,
+                            phase_split, rng, bounds_hi,
                         )),
                         bounds_lo, bounds_hi,
                     )
@@ -392,7 +387,6 @@ def run_single_de(baseline_data, num_genes, tls_to_genes,
     if NOVEL_MUTATION:
         results.update({
             "tree": tree_name,
-            "threshold": threshold,
             "mutation_rate": MUTATION_RATE,
             "num_pair_clusters": len(valid_pairs),
         })
@@ -433,11 +427,7 @@ def run_all_experiments():
     rng = np.random.default_rng(42)
 
     if NOVEL_MUTATION:
-        trees = {
-            "shortest":  out_dir / "tls_distances_shortest.json",
-            "euclidian": out_dir / "tls_distances_euclidian.json",
-            "fastest":   out_dir / "tls_distances_fastest.json",
-        }
+        trees = distance_tree_paths(out_dir)
         summary = {}
 
         for tree_name, dist_path in trees.items():

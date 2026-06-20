@@ -22,7 +22,14 @@ import libsumo as traci
 
 # Add project root to sys.path to import config
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import SUMO_ARGS, BASELINE_TRAFFIC_DATA, PHASE_BOUNDS, CYCLE_LENGTH
+from config import (
+    SUMO_ARGS, BASELINE_TRAFFIC_DATA, CYCLE_LENGTH,
+    GREEN_FLOOR, RED_FLOOR, YELLOW_FLOOR, YELLOW_CEIL,
+)
+
+# Per-type phase-duration floors. Green/red ceilings are dynamic (see
+# phase_upper_bounds); only yellow keeps a static ceiling (YELLOW_CEIL).
+PHASE_FLOOR = {"green": GREEN_FLOOR, "yellow": YELLOW_FLOOR, "red": RED_FLOOR}
 
 with open(BASELINE_TRAFFIC_DATA, 'r') as f:
     BASELINE_DATA = json.load(f)
@@ -109,14 +116,97 @@ def evaluate_population(population):
 
 # ── Phase-type inference ─────────────────────────────────────────────────────
 
-def _phase_type(state: str) -> str:
-    """Infer phase type (green/yellow/red) from SUMO state string."""
+def phase_type(state: str) -> str:
+    """Infer phase type (green/yellow/red) from a SUMO TLS state string."""
     s = state.lower()
     counts = {"green": s.count("g"), "yellow": s.count("y"), "red": s.count("r")}
     for ptype in ("green", "yellow", "red"):
         if counts[ptype] == max(counts.values()):
             return ptype
     return "red"
+
+
+# ── Dynamic per-TLS green/red ceiling ───────────────────────────────────────
+
+def phase_upper_bounds(phase_types, durations, cycle_length=CYCLE_LENGTH):
+    """
+    Per-phase upper bound for one TLS within a fixed ``cycle_length`` cycle.
+
+    For each non-yellow (green/red) phase, the ceiling is the most that phase
+    can occupy while every *other* non-yellow phase sits at its per-type
+    minimum and the (frozen) yellow phases keep their current duration::
+
+        ceiling_j = cycle_length - Σ(yellow durations)
+                                 - Σ(min of every OTHER non-yellow phase)
+
+    where each non-yellow minimum comes from ``PHASE_FLOOR[ptype]``
+    (green=24, red=5).  Yellow phases keep their static upper bound
+    (``YELLOW_CEIL``): they are frozen and clamped to ``[3, 6]``
+    elsewhere, so their ceiling does not depend on the cycle.
+
+    Examples
+    --------
+    3-phase ``G, y, r`` with yellow=6 → green ceiling 90-6-5 = 79,
+    red ceiling 90-6-24 = 60.
+    4-phase ``G, y, G, y`` with yellows 6+6 → each green 90-12-24 = 54.
+    """
+    yellow_sum = sum(d for d, pt in zip(durations, phase_types) if pt == "yellow")
+    nonyellow = [i for i, pt in enumerate(phase_types) if pt != "yellow"]
+    mins = {i: PHASE_FLOOR[phase_types[i]] for i in nonyellow}
+
+    bounds = []
+    for i, ptype in enumerate(phase_types):
+        if ptype == "yellow":
+            bounds.append(float(YELLOW_CEIL))
+            continue
+        others_min = sum(mins[j] for j in nonyellow if j != i)
+        bounds.append(float(cycle_length - yellow_sum - others_min))
+    return bounds
+
+
+# ── Cycle-length normalisation (shared between eval-time and save-time) ─────
+
+def normalize_to_cycle(raw_durations, phase_types, cycle_length=CYCLE_LENGTH,
+                       upper_bounds=None):
+    """
+    Clamp each phase duration to its per-type floor and ceiling, then bring the
+    total to ``cycle_length`` by absorbing the remainder into the smallest
+    green/red phase.  If that would push the target below its minimum, the
+    absorption falls back to the largest green/red phase.
+
+    Floors come from ``PHASE_FLOOR``.  Ceilings are the dynamic per-phase
+    ``upper_bounds`` (from :func:`phase_upper_bounds`); green/red have no static
+    ceiling, and yellow's ``upper_bounds`` entry is already ``YELLOW_CEIL``.
+    The remainder absorption respects that ceiling by construction: a phase only
+    grows when it is the *smallest* adjustable one, and the most it can reach is
+    exactly ``cycle_length - yellows - other mins`` — the bound.
+
+    Used by both the fitness wrapper (so SUMO sees a fixed cycle) and by
+    _rebuild_json (so the saved JSON matches what was simulated).
+    """
+    durations = []
+    for i, (raw_val, ptype) in enumerate(zip(raw_durations, phase_types)):
+        lo = PHASE_FLOOR[ptype]
+        if upper_bounds is not None:
+            hi = upper_bounds[i]
+        else:
+            hi = YELLOW_CEIL if ptype == "yellow" else cycle_length
+        durations.append(int(round(max(lo, min(hi, raw_val)))))
+
+    remainder = cycle_length - sum(durations)
+    if remainder != 0:
+        adjustable = [i for i, pt in enumerate(phase_types) if pt in ("green", "red")]
+        if adjustable:
+            target_idx = min(adjustable, key=lambda i: durations[i])
+            durations[target_idx] += remainder
+
+            lo = PHASE_FLOOR[phase_types[target_idx]]
+            if durations[target_idx] < lo:
+                durations[target_idx] = lo
+                fallback = max(adjustable, key=lambda i: durations[i])
+                durations[fallback] += cycle_length - sum(durations)
+
+    return durations
 
 
 # ── Traffic-light fitness wrapper (picklable for multiprocessing) ────────────
@@ -132,31 +222,10 @@ class TrafficFitnessWrapper:
         tls_durations = {}
 
         for tls in self.tls_mapping:
-            tls_id = tls["tls_id"]
-            phase_types = tls["phase_types"]
             raw = list(vector[tls["start_idx"]: tls["end_idx"]])
-
-            # Clamp each gene to its per-type bounds
-            durations = []
-            for raw_val, ptype in zip(raw, phase_types):
-                lo, hi = PHASE_BOUNDS[ptype]
-                durations.append(int(round(max(lo, min(hi, raw_val)))))
-
-            # Adjust for 90s cycle length (only green/red absorb remainder)
-            remainder = CYCLE_LENGTH - sum(durations)
-            if remainder != 0:
-                adjustable = [i for i, pt in enumerate(phase_types) if pt in ("green", "red")]
-                if adjustable:
-                    target_idx = min(adjustable, key=lambda i: durations[i])
-                    durations[target_idx] += remainder
-
-                    lo, _ = PHASE_BOUNDS[phase_types[target_idx]]
-                    if durations[target_idx] < lo:
-                        durations[target_idx] = lo
-                        fallback = max(adjustable, key=lambda i: durations[i])
-                        durations[fallback] += CYCLE_LENGTH - sum(durations)
-
-            tls_durations[tls_id] = durations
+            tls_durations[tls["tls_id"]] = normalize_to_cycle(
+                raw, tls["phase_types"], upper_bounds=tls["upper_bounds"]
+            )
 
         return self.fitness_function(tls_durations)
 
@@ -169,21 +238,29 @@ def build_traffic_fitness_wrapper(baseline_data, fitness_function):
 
     for tls_id in sorted(baseline_data["tls_data"].keys()):
         phase_keys = sorted(baseline_data["tls_data"][tls_id].keys())
-        phase_types = []
+        phase_types, baseline_durs = [], []
 
         for pk in phase_keys:
-            state = baseline_data["tls_data"][tls_id][pk].get("state", "")
-            ptype = _phase_type(state)
+            phase = baseline_data["tls_data"][tls_id][pk]
+            ptype = phase_type(phase.get("state", ""))
             phase_types.append(ptype)
+            # Only yellow defaults matter here (phase_upper_bounds sums yellows);
+            # missing-duration fallback is otherwise just a safe placeholder.
+            default_dur = YELLOW_CEIL if ptype == "yellow" else PHASE_FLOOR[ptype]
+            baseline_durs.append(phase.get("duration", default_dur))
 
-            lo, hi = PHASE_BOUNDS[ptype]
-            x_lower_list.append(float(lo))
-            x_upper_list.append(float(hi))
+        # Dynamic per-TLS upper bound from this TLS's (frozen) yellow durations.
+        upper_bounds = phase_upper_bounds(phase_types, baseline_durs)
+
+        for pk, ptype, ub in zip(phase_keys, phase_types, upper_bounds):
+            x_lower_list.append(float(PHASE_FLOOR[ptype]))
+            x_upper_list.append(float(ub))
             labels.append(f"{tls_id}_{pk}")
 
         tls_mapping.append({
             "tls_id": tls_id, "num_phases": len(phase_keys),
             "phase_types": phase_types,
+            "upper_bounds": upper_bounds,
             "start_idx": gene_idx, "end_idx": gene_idx + len(phase_keys),
         })
         gene_idx += len(phase_keys)

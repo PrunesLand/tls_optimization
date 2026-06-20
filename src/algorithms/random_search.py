@@ -6,7 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import (
     BASELINE_TRAFFIC_DATA, NUM_PROCESSORS, GAUSSIAN_NOISE,
-    MAX_EVALS, GENE_LOW, GENE_HIGH
+    MAX_EVALS, GREEN_FLOOR, INSTANCES, SEED_BASE
 )
 from src.sumo_setup.fitness_evaluation import (
     fitness_function as _traffic_fitness,
@@ -22,22 +22,28 @@ def _eval_worker(args):
     return sol_idx, rep, fitness, elapsed
 
 
-def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng):
-    """Create initial population: 'random', 'baseline', or 'mixed'."""
+def init_population(strategy, n, num_genes, baseline_vec, noise_std, rng, ub):
+    """Create initial population: 'random', 'baseline', or 'mixed'.
+
+    ``ub`` is the per-gene upper bound (dynamic per-TLS green/red ceiling).
+    """
+    # Per-gene lower bound: yellow phases have ub=6 < GREEN_FLOOR, so cap the
+    # lower at ub to keep uniform()/clip() valid (yellow collapses to 6).
+    lo = np.minimum(GREEN_FLOOR, ub)
     if strategy == "random":
-        return rng.uniform(GENE_LOW, GENE_HIGH, (n, num_genes))
+        return rng.uniform(lo, ub, (n, num_genes))
 
     elif strategy == "baseline":
         pop = np.tile(baseline_vec, (n, 1))
         pop += rng.normal(0, noise_std, pop.shape) * pop
-        return np.clip(pop, GENE_LOW, GENE_HIGH)
+        return np.clip(pop, lo, ub)
 
     elif strategy == "mixed":
         half = n // 2
-        rand = rng.uniform(GENE_LOW, GENE_HIGH, (half, num_genes))
+        rand = rng.uniform(lo, ub, (half, num_genes))
         base = np.tile(baseline_vec, (n - half, 1))
         base += rng.normal(0, noise_std, base.shape) * base
-        return np.vstack([rand, np.clip(base, GENE_LOW, GENE_HIGH)])
+        return np.vstack([rand, np.clip(base, lo, ub)])
 
     raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -58,13 +64,13 @@ def build_gene_map(baseline_data):
     return tls_to_genes, idx, np.array(baseline)
 
 
-def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, out_dir, rng):
-    """Run a single Random Search experiment block."""
+def run_single_search(strategy, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, ub, out_dir, rng):
+    """Run a single Random Search and write its result file."""
     print(f"\n{'='*60}")
-    print(f"Random Search | Tree (Label): {tree_name} | Strategy: {strategy} | Solutions: {MAX_EVALS}")
+    print(f"Random Search | Strategy: {strategy} | Solutions: {MAX_EVALS}")
     print(f"{'='*60}")
 
-    solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng)
+    solutions = init_population(strategy, MAX_EVALS, num_genes, baseline_vec, GAUSSIAN_NOISE, rng, ub)
     
     tasks = []
     for i, solution in enumerate(solutions):
@@ -121,7 +127,6 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
 
     best_json["composite_cost"] = best_fitness
 
-    label = f"{tree_name}_{strategy}"
     output = {
         "evaluations": results,
         "best_configuration": best_json,
@@ -131,62 +136,97 @@ def run_single_search(tree_name, strategy, baseline_data, wrapper, num_genes, ba
         "MAX_EVALS": MAX_EVALS,
         "total_evaluations": len(results),
         "algorithm": "random_search",
-        "tree": tree_name,
         "strategy": strategy,
+        "seed": int(os.environ.get("TLS_RS_SEED", SEED_BASE)),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
-    out_path = out_dir / f"random_search_{label}.json"
+    out_path = out_dir / os.environ.get("TLS_RS_OUTFILE", "random_search.json")
     with open(out_path, "w") as fh:
         json.dump(output, fh, indent=2)
 
     return best_fitness, total_time
 
 
+def _resolve_out_dir():
+    """Output dir for this run: ``<active instance out_dir>/random_search``.
+
+    The active instance is whichever ``INSTANCES`` entry matches the baseline
+    traffic data ``config`` resolved (honours ``TLS_BASELINE_DATA``); falls back
+    to the default ``src/outputs`` when nothing matches.
+
+    ``TLS_RS_OUTDIR`` overrides this entirely (used by the multi-repetition
+    runner to collect all reps + summaries under one dedicated folder).
+    """
+    override = os.environ.get("TLS_RS_OUTDIR")
+    if override:
+        return Path(override)
+    root = Path(__file__).resolve().parent.parent.parent
+    active = Path(BASELINE_TRAFFIC_DATA).resolve()
+    base = root / "src" / "outputs"
+    for spec in INSTANCES.values():
+        if Path(spec["baseline_data"]).resolve() == active:
+            base = spec["out_dir"]
+            break
+    return base / "random_search"
+
+
 def run_all_experiments():
-    """Run all 9 experiments to match LT-GOMEA structure."""
+    """Run a single random search (random init, no tree strategies).
+
+    Writes ``random_search.json`` into the active instance's
+    ``<out_dir>/random_search`` folder.
+
+    Two environment variables let a multi-repetition runner drive this without
+    touching the module:
+      * ``TLS_RS_SEED`` — RNG seed for the initial population (default
+        ``SEED_BASE``).  Distinct seeds across repetitions make the runs differ;
+        reusing one seed would make them byte-identical and any average over
+        them meaningless.
+      * ``TLS_RS_OUTFILE`` — basename to write instead of ``random_search.json``
+        (e.g. ``random_search_rep1.json``), so reps never clobber each other.
+    """
     with open(BASELINE_TRAFFIC_DATA) as fh:
         baseline_data = json.load(fh)
 
-    wrapper, num_genes, _, _, _ = build_traffic_fitness_wrapper(
+    wrapper, num_genes, _, ub, _ = build_traffic_fitness_wrapper(
         baseline_data=baseline_data,
         fitness_function=_traffic_fitness,
     )
-    
+
     tls_to_genes, _, baseline_vec = build_gene_map(baseline_data)
 
-    root = Path(__file__).resolve().parent.parent.parent
-    out_dir = root / "src" / "outputs"
+    out_dir = _resolve_out_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    trees = ["shortest", "euclidian", "fastest"]
-    strategies = ["random", "baseline", "mixed"]
-    summary = {}
-    
-    rng = np.random.default_rng(42)
+    # Optional MAX_EVALS override (smoke tests). MAX_EVALS is read as a module
+    # global by run_single_search, so reassign it here before the run.
+    global MAX_EVALS
+    if "TLS_RS_MAX_EVALS" in os.environ:
+        MAX_EVALS = int(os.environ["TLS_RS_MAX_EVALS"])
 
-    for tree_name in trees:
-        for strat in strategies:
-            label = f"{tree_name}_{strat}"
-            try:
-                best_cost, elapsed = run_single_search(
-                    tree_name, strat, baseline_data, wrapper, num_genes, baseline_vec, tls_to_genes, out_dir, rng
-                )
-                summary[label] = {"best": best_cost, "time_s": elapsed}
-            except Exception as e:
-                print(f"ERROR [{label}]: {e}")
-                import traceback; traceback.print_exc()
-                summary[label] = {"error": str(e)}
+    strategy = "random"
+    seed = int(os.environ.get("TLS_RS_SEED", SEED_BASE))
+    rng = np.random.default_rng(seed)
 
-    # Print results table
-    print(f"\n{'Tree Label':<15} {'Strategy':<10} {'Best':>12} {'Time':>8}")
-    print("─" * 47)
-    for label, info in summary.items():
-        t, s = label.rsplit("_", 1)
-        if "error" in info:
-            print(f"{t:<15} {s:<10} {'ERROR':>12}")
-        else:
-            print(f"{t:<15} {s:<10} {info['best']:>12.2f} {info['time_s']:>7.1f}s")
+    try:
+        best_cost, elapsed = run_single_search(
+            strategy, baseline_data, wrapper, num_genes,
+            baseline_vec, tls_to_genes, ub, out_dir, rng
+        )
+        info = {"best": best_cost, "time_s": elapsed}
+    except Exception as e:
+        print(f"ERROR [{strategy}]: {e}")
+        import traceback; traceback.print_exc()
+        info = {"error": str(e)}
+
+    # Print results
+    print(f"\n{'Strategy':<10} {'Best':>14} {'Time':>9}")
+    print("─" * 35)
+    if "error" in info:
+        print(f"{strategy:<10} {'ERROR':>14}")
+    else:
+        print(f"{strategy:<10} {info['best']:>14.2f} {info['time_s']:>8.1f}s")
 
 
 if __name__ == "__main__":

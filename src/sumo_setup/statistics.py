@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+
+from config import OPTIMIZE_PHASE_COUNTS
+
 from src.sumo_setup.extraction import extract_traffic_light_data
 
 
@@ -13,6 +16,21 @@ def get_min_max_stats():
     if not tls_json_data:
         print("No traffic light data found.")
         return
+
+    # Drop TLSs whose phase count is outside OPTIMIZE_PHASE_COUNTS so these
+    # statistics describe the same filtered set as the generated baseline
+    # (see generation.generate_data). Excluded TLSs are not analyzed here.
+    excluded = [tid for tid, data in tls_json_data.items()
+                if len(data["phases"]) not in OPTIMIZE_PHASE_COUNTS]
+    for tid in excluded:
+        del tls_json_data[tid]
+    if excluded:
+        print(f"Excluded {len(excluded)} TLS(s) with phase counts outside "
+              f"{sorted(OPTIMIZE_PHASE_COUNTS)}: {excluded}")
+    if not tls_json_data:
+        print("No traffic light data left after phase-count filtering.")
+        return
+    print(f"Kept {len(tls_json_data)} TLS(s) for statistics.")
 
     stats = {
         'lanes': [], 'signals': [], 'phases': [], 'cycles': [],
