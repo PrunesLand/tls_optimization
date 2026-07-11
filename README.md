@@ -1,6 +1,6 @@
 # Traffic Light Signalling Control Optimization
 
-This is my take on optimizing traffic light controls as a discrete type problem with genetic algorithms.
+This is my take on optimizing traffic light controls as a discrete type problem with differential evolution.
 
 ## Setup & Usage
 
